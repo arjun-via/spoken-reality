@@ -9,38 +9,51 @@ struct FloatingButton: View {
         case success
     }
 
-    @State private var state: ButtonState = .idle
+    @Binding var state: ButtonState
     @State private var scale: CGFloat = 1.0
+    @State private var isPressed: Bool = false
 
-    let action: () -> Void
+    let onPressStart: () -> Void
+    let onPressEnd: () -> Void
 
     var body: some View {
-        Button(action: action) {
-            ZStack {
-                // Background circle
+        ZStack {
+            // Background circle
+            Circle()
+                .fill(backgroundColor)
+                .frame(width: 64, height: 64)
+                .shadow(color: .black.opacity(0.3), radius: 8, x: 0, y: 4)
+
+            // Pulsing ring (recording state)
+            if state == .recording {
                 Circle()
-                    .fill(backgroundColor)
-                    .frame(width: 64, height: 64)
-                    .shadow(color: .black.opacity(0.3), radius: 8, x: 0, y: 4)
-
-                // Pulsing ring (recording state)
-                if state == .recording {
-                    Circle()
-                        .stroke(Color.accentPrimary.opacity(0.5), lineWidth: 2)
-                        .frame(width: 80, height: 80)
-                        .scaleEffect(scale)
-                        .opacity(2 - scale)
-                }
-
-                // Icon
-                icon
-                    .font(.system(size: 24))
-                    .foregroundColor(.white)
+                    .stroke(Color.accentPrimary.opacity(0.5), lineWidth: 2)
+                    .frame(width: 80, height: 80)
+                    .scaleEffect(scale)
+                    .opacity(2 - scale)
             }
+
+            // Icon
+            icon
+                .font(.system(size: 24))
+                .foregroundColor(.white)
         }
-        .buttonStyle(PlainButtonStyle())
-        .scaleEffect(state == .idle ? 1.0 : 0.95)
+        .scaleEffect(isPressed ? 0.95 : 1.0)
+        .animation(.spring(response: 0.3), value: isPressed)
         .animation(.spring(response: 0.3), value: state)
+        .gesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { _ in
+                    if !isPressed {
+                        isPressed = true
+                        handlePressStart()
+                    }
+                }
+                .onEnded { _ in
+                    isPressed = false
+                    handlePressEnd()
+                }
+        )
         .onChange(of: state) { oldValue, newValue in
             handleStateChange(newValue)
         }
@@ -71,6 +84,22 @@ struct FloatingButton: View {
         }
     }
 
+    private func handlePressStart() {
+        // Haptic feedback
+        let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
+        impactFeedback.impactOccurred()
+
+        onPressStart()
+    }
+
+    private func handlePressEnd() {
+        // Haptic feedback
+        let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+        impactFeedback.impactOccurred()
+
+        onPressEnd()
+    }
+
     private func handleStateChange(_ newState: ButtonState) {
         switch newState {
         case .recording:
@@ -81,7 +110,7 @@ struct FloatingButton: View {
                 state = .idle
             }
         default:
-            break
+            scale = 1.0
         }
     }
 
@@ -90,17 +119,30 @@ struct FloatingButton: View {
             scale = 1.3
         }
     }
-
-    // Public methods to control state
-    func setState(_ newState: ButtonState) {
-        state = newState
-    }
 }
 
 #Preview {
-    ZStack {
-        Color.bgPrimary.ignoresSafeArea()
+    struct PreviewWrapper: View {
+        @State private var buttonState: FloatingButton.ButtonState = .idle
 
-        FloatingButton(action: {})
+        var body: some View {
+            ZStack {
+                Color.bgPrimary.ignoresSafeArea()
+
+                FloatingButton(
+                    state: $buttonState,
+                    onPressStart: {
+                        print("Press started")
+                        buttonState = .recording
+                    },
+                    onPressEnd: {
+                        print("Press ended")
+                        buttonState = .processing
+                    }
+                )
+            }
+        }
     }
+
+    return PreviewWrapper()
 }
