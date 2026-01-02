@@ -1,17 +1,39 @@
 import SwiftUI
 
 enum DevelopmentTab {
-    case output
-    case database
+    case output  // Shows the running app (WebView)
+    case chat    // Shows conversation history (prompts & responses)
+}
+
+enum VerticalScreen {
+    case code    // Swipe UP to show
+    case main    // Center (Output/Chat)
+    case git     // Swipe DOWN to show
+}
+
+// Model for conversation messages
+struct ConversationMessage: Identifiable {
+    let id = UUID()
+    let isUser: Bool
+    let text: String
+    let timestamp: Date
 }
 
 struct DevelopmentView: View {
     @State private var selectedTab: DevelopmentTab = .output
     @State private var isLoading = false
     @State private var showProgress = false
-    @State private var devServerURL: URL? = URL(string: "https://example.com")
-    @State private var showCodeInspection = false
+    @State private var webViewLoadError: String? = nil
+    @State private var webViewReloadToken: UUID = UUID()
     @State private var showSettings = false
+
+    // Vertical navigation
+    @State private var verticalScreen: VerticalScreen = .main
+    @State private var verticalOffset: CGFloat = 0
+    @State private var isDraggingVertically = false
+
+    // Conversation history
+    @State private var conversationMessages: [ConversationMessage] = []
 
     // For mic button and recording
     @State private var buttonState: FloatingButton.ButtonState = .idle
@@ -26,35 +48,185 @@ struct DevelopmentView: View {
     @State private var audioStreamingHandler: AudioStreamingHandler?
 
     var body: some View {
-        mainContentWithObservers
-            .sheet(isPresented: $showClarificationModal) {
-                clarificationSheet
+        GeometryReader { geometry in
+            ZStack {
+                // Vertical stack of screens
+                VStack(spacing: 0) {
+                    // Code screen (above main) - shows when swiping UP
+                    CodeInspectionView()
+                        .frame(height: geometry.size.height)
+
+                    // Main screen (Output/Chat)
+                    mainContentWithObservers
+                        .frame(height: geometry.size.height)
+
+                    // Git Status screen (below main) - shows when swiping DOWN
+                    GitStatusView()
+                        .frame(height: geometry.size.height)
+                }
+                .offset(y: verticalNavigationOffset(for: geometry.size.height))
+                .contentShape(Rectangle())
+                .simultaneousGesture(verticalDragGesture(screenHeight: geometry.size.height))
+                .animation(.interactiveSpring(response: 0.4, dampingFraction: 0.8), value: verticalScreen)
+                .animation(.interactiveSpring(response: 0.3, dampingFraction: 0.8), value: verticalOffset)
+
+                // Swipe indicators
+                if verticalScreen == .main && !isDraggingVertically {
+                    swipeIndicators
+                }
             }
-            .toolbar {
-                toolbarContent
+        }
+        .sheet(isPresented: $showClarificationModal) {
+            clarificationSheet
+        }
+        .toolbar {
+            toolbarContent
+        }
+        .sheet(isPresented: $showSettings) {
+            SettingsView()
+        }
+        .alert("Microphone Access Required", isPresented: $showPermissionAlert) {
+            Button("Cancel", role: .cancel) { }
+            Button("Open Settings") {
+                if let settingsURL = URL(string: UIApplication.openSettingsURLString) {
+                    UIApplication.shared.open(settingsURL)
+                }
             }
-            .sheet(isPresented: $showCodeInspection) {
-                CodeInspectionView()
-            }
-            .sheet(isPresented: $showSettings) {
-                SettingsView()
-            }
-            .alert("Microphone Access Required", isPresented: $showPermissionAlert) {
-                Button("Cancel", role: .cancel) { }
-                Button("Open Settings") {
-                    if let settingsURL = URL(string: UIApplication.openSettingsURLString) {
-                        UIApplication.shared.open(settingsURL)
+        } message: {
+            Text("Spoken Reality needs microphone access to record your voice commands. Please enable it in Settings.")
+        }
+        .alert("Error", isPresented: $showErrorAlert) {
+            errorAlertButtons
+        } message: {
+            errorAlertMessage
+        }
+        .preferredColorScheme(.dark)
+    }
+
+    // MARK: - Vertical Navigation
+
+    private func verticalNavigationOffset(for screenHeight: CGFloat) -> CGFloat {
+        let baseOffset: CGFloat
+        switch verticalScreen {
+        case .code:
+            baseOffset = 0  // Show code (top screen)
+        case .main:
+            baseOffset = -screenHeight  // Show main (middle screen)
+        case .git:
+            baseOffset = -screenHeight * 2  // Show git (bottom screen)
+        }
+        return baseOffset + verticalOffset
+    }
+
+    private func verticalDragGesture(screenHeight: CGFloat) -> some Gesture {
+        DragGesture(minimumDistance: 30)
+            .onChanged { value in
+                let horizontalAmount = abs(value.translation.width)
+                let verticalAmount = abs(value.translation.height)
+
+                // Only handle if primarily vertical swipe
+                guard verticalAmount > horizontalAmount else {
+                    return
+                }
+
+                isDraggingVertically = true
+                let translation = value.translation.height
+
+                // Apply resistance at edges
+                switch verticalScreen {
+                case .code:
+                    if translation > 0 {
+                        verticalOffset = translation * 0.6
+                    } else {
+                        verticalOffset = translation * 0.2
+                    }
+                case .main:
+                    verticalOffset = translation * 0.6
+                case .git:
+                    if translation < 0 {
+                        verticalOffset = translation * 0.6
+                    } else {
+                        verticalOffset = translation * 0.2
                     }
                 }
-            } message: {
-                Text("Spoken Reality needs microphone access to record your voice commands. Please enable it in Settings.")
             }
-            .alert("Error", isPresented: $showErrorAlert) {
-                errorAlertButtons
-            } message: {
-                errorAlertMessage
+            .onEnded { value in
+                let horizontalAmount = abs(value.translation.width)
+                let verticalAmount = abs(value.translation.height)
+
+                guard verticalAmount > horizontalAmount || isDraggingVertically else {
+                    isDraggingVertically = false
+                    verticalOffset = 0
+                    return
+                }
+
+                isDraggingVertically = false
+                let threshold: CGFloat = screenHeight * 0.1
+                let velocity = value.predictedEndTranslation.height - value.translation.height
+
+                withAnimation(.interactiveSpring(response: 0.4, dampingFraction: 0.8)) {
+                    if value.translation.height < -threshold || velocity < -500 {
+                        // Swiped UP
+                        switch verticalScreen {
+                        case .code: break
+                        case .main: verticalScreen = .code
+                        case .git: verticalScreen = .main
+                        }
+                    } else if value.translation.height > threshold || velocity > 500 {
+                        // Swiped DOWN
+                        switch verticalScreen {
+                        case .code: verticalScreen = .main
+                        case .main: verticalScreen = .git
+                        case .git: break
+                        }
+                    }
+                    verticalOffset = 0
+                }
             }
-            .preferredColorScheme(.dark)
+    }
+
+    private var swipeIndicators: some View {
+        VStack {
+            // Swipe up indicator
+            swipeIndicator(direction: .up, label: "Code")
+                .padding(.top, 60)
+
+            Spacer()
+
+            // Swipe down indicator
+            swipeIndicator(direction: .down, label: "Git")
+                .padding(.bottom, 100)
+        }
+        .allowsHitTesting(false)
+    }
+
+    private func swipeIndicator(direction: SwipeDirection, label: String) -> some View {
+        VStack(spacing: 4) {
+            if direction == .down {
+                Text(label)
+                    .font(.caption2)
+                    .foregroundColor(.textTertiary)
+            }
+
+            Image(systemName: direction == .up ? "chevron.up" : "chevron.down")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundColor(.textTertiary)
+
+            if direction == .up {
+                Text(label)
+                    .font(.caption2)
+                    .foregroundColor(.textTertiary)
+            }
+        }
+        .padding(.horizontal, Spacing.md)
+        .padding(.vertical, Spacing.xs)
+        .background(Color.bgSecondary.opacity(0.8))
+        .cornerRadius(12)
+        .opacity(0.6)
+    }
+
+    private enum SwipeDirection {
+        case up, down
     }
 
     private var mainContentWithObservers: some View {
@@ -62,6 +234,14 @@ struct DevelopmentView: View {
             .onAppear {
                 setupAudioStreaming()
                 connectToBackend()
+
+                // If we already have a preview URL from an earlier session,
+                // show it immediately (onChange won't fire for an initial value).
+                if let existingPreview = webSocketService.previewURL {
+                    print("📱 Using existing preview URL on appear: \(existingPreview)")
+                    webViewLoadError = nil
+                    webViewReloadToken = UUID()
+                }
             }
             .onDisappear {
                 webSocketService.disconnect()
@@ -70,8 +250,15 @@ struct DevelopmentView: View {
                 handleAgentStateChange(newState)
             }
             .onChange(of: webSocketService.previewURL) { oldValue, newValue in
+                print("📱 Preview URL changed: \(String(describing: oldValue)) -> \(String(describing: newValue))")
                 if let url = newValue {
-                    devServerURL = url
+                    print("📱 Preview ready: \(url)")
+                    webViewLoadError = nil
+                    webViewReloadToken = UUID() // force reload even if URL stays the same
+                    // Auto-switch to output tab when preview is ready
+                    withAnimation {
+                        selectedTab = .output
+                    }
                 }
             }
             .onChange(of: webSocketService.clarificationQuestion) { oldValue, newValue in
@@ -79,6 +266,22 @@ struct DevelopmentView: View {
             }
             .onChange(of: webSocketService.lastError) { oldValue, newValue in
                 showErrorAlert = (newValue != nil)
+            }
+            .onChange(of: webSocketService.finalTranscription) { oldValue, newValue in
+                // Add user message to conversation when transcription is finalized
+                if !newValue.isEmpty && newValue != oldValue {
+                    let userMessage = ConversationMessage(isUser: true, text: newValue, timestamp: Date())
+                    conversationMessages.append(userMessage)
+                }
+            }
+            .onChange(of: webSocketService.agentMessage) { oldValue, newValue in
+                // Add agent response to conversation when in presenting state
+                if webSocketService.agentState == .presenting,
+                   let message = newValue,
+                   !message.isEmpty {
+                    let agentMessage = ConversationMessage(isUser: false, text: message, timestamp: Date())
+                    conversationMessages.append(agentMessage)
+                }
             }
     }
 
@@ -110,34 +313,116 @@ struct DevelopmentView: View {
             if showRecordingInfo {
                 recordingInfoOverlay
             }
-
-            // Transcription overlay
-            TranscriptionOverlay(text: transcriptionText)
         }
     }
 
     private var contentStack: some View {
         VStack(spacing: 0) {
-            // Progress bar at top
-            if showProgress {
-                ProgressBar()
-                    .transition(.opacity)
+            // Status banner at top - shows real-time agent status
+            if showProgress || (webSocketService.agentState != .idle && webSocketService.agentState != .presenting) {
+                agentStatusBanner
+                    .transition(.move(edge: .top).combined(with: .opacity))
             }
 
-            // Main content area
+            // Main content area (Chat LEFT, Output RIGHT)
             TabView(selection: $selectedTab) {
-                // Output tab (WebView)
+                // Chat tab (LEFT) - shows conversation history
+                chatView
+                    .tag(DevelopmentTab.chat)
+
+                // Output tab (RIGHT) - shows the running app
                 outputView
                     .tag(DevelopmentTab.output)
-
-                // Database tab
-                databaseView
-                    .tag(DevelopmentTab.database)
             }
             .tabViewStyle(.page(indexDisplayMode: .never))
 
             // Bottom tab bar
             tabBar
+        }
+    }
+    
+    private var agentStatusBanner: some View {
+        HStack(spacing: Spacing.sm) {
+            // Status indicator
+            statusIndicatorIcon
+            
+            VStack(alignment: .leading, spacing: 2) {
+                Text(agentStateTitle)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundColor(.textPrimary)
+                
+                if let message = webSocketService.agentMessage {
+                    Text(message)
+                        .font(.caption)
+                        .foregroundColor(.textSecondary)
+                        .lineLimit(2)
+                }
+            }
+            
+            Spacer()
+            
+            // Progress indicator
+            if webSocketService.agentState == .executing || webSocketService.agentState == .planning {
+                ProgressView()
+                    .progressViewStyle(CircularProgressViewStyle(tint: .accentPrimary))
+                    .scaleEffect(0.8)
+            }
+        }
+        .padding(.horizontal, Spacing.md)
+        .padding(.vertical, Spacing.sm)
+        .background(Color.bgSecondary)
+        .animation(.easeInOut(duration: 0.2), value: webSocketService.agentMessage)
+    }
+    
+    @ViewBuilder
+    private var statusIndicatorIcon: some View {
+        switch webSocketService.agentState {
+        case .idle:
+            Image(systemName: "circle")
+                .foregroundColor(.textSecondary)
+        case .listening:
+            Image(systemName: "waveform")
+                .foregroundColor(.accentPrimary)
+                .symbolEffect(.variableColor.iterative)
+        case .interpreting:
+            Image(systemName: "text.bubble")
+                .foregroundColor(.accentPrimary)
+        case .planning:
+            Image(systemName: "brain")
+                .foregroundColor(.accentPrimary)
+        case .executing:
+            Image(systemName: "hammer.fill")
+                .foregroundColor(.accentPrimary)
+        case .presenting:
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundColor(.success)
+        case .clarifying:
+            Image(systemName: "questionmark.circle")
+                .foregroundColor(.warning)
+        case .error:
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundColor(.error)
+        }
+    }
+    
+    private var agentStateTitle: String {
+        switch webSocketService.agentState {
+        case .idle:
+            return "Ready"
+        case .listening:
+            return "Listening..."
+        case .interpreting:
+            return "Understanding..."
+        case .planning:
+            return "Planning..."
+        case .executing:
+            return "Building..."
+        case .presenting:
+            return "Done!"
+        case .clarifying:
+            return "Question"
+        case .error:
+            return "Error"
         }
     }
 
@@ -162,7 +447,11 @@ struct DevelopmentView: View {
     }
 
     private var transcriptionText: String {
-        webSocketService.partialTranscription.isEmpty ? webSocketService.finalTranscription : webSocketService.partialTranscription
+        // Hide transcription when presenting (app is ready)
+        if webSocketService.agentState == .presenting || webSocketService.agentState == .idle {
+            return ""
+        }
+        return webSocketService.partialTranscription.isEmpty ? webSocketService.finalTranscription : webSocketService.partialTranscription
     }
 
     private var clarificationSheet: some View {
@@ -187,12 +476,15 @@ struct DevelopmentView: View {
 
             ToolbarItem(placement: .navigationBarTrailing) {
                 Menu {
-                    Button(action: { showCodeInspection = true }) {
-                        Label("View Code", systemImage: "doc.text")
-                    }
                     Button(action: { showSettings = true }) {
                         Label("Settings", systemImage: "gear")
                     }
+
+                    Divider()
+
+                    // Navigation hints
+                    Text("Swipe up for Code")
+                    Text("Swipe down for Git")
                 } label: {
                     Image(systemName: "ellipsis.circle")
                         .foregroundColor(.accentPrimary)
@@ -270,31 +562,136 @@ struct DevelopmentView: View {
 
     private var outputView: some View {
         ZStack {
-            if let url = devServerURL {
-                WebView(url: url, isLoading: $isLoading)
+            if let url = webSocketService.previewURL {
+                WebView(url: url, reloadToken: webViewReloadToken, isLoading: $isLoading, loadError: $webViewLoadError)
+                    .edgesIgnoringSafeArea(.all) // Full screen WebView
+                
+                // Refresh button in top-right corner
+                VStack {
+                    HStack {
+                        Spacer()
+                        Button(action: {
+                            webViewLoadError = nil
+                            webViewReloadToken = UUID()
+                        }) {
+                            Image(systemName: "arrow.clockwise")
+                                .font(.system(size: 16, weight: .medium))
+                                .foregroundColor(.white)
+                                .padding(10)
+                                .background(Color.black.opacity(0.5))
+                                .clipShape(Circle())
+                        }
+                        .padding(.top, 50)
+                        .padding(.trailing, Spacing.md)
+                    }
+                    Spacer()
+                }
+
+                // If the preview fails to load, show a clear error overlay (instead of a blank screen)
+                if let error = webViewLoadError {
+                    previewErrorOverlay(error: error, url: url)
+                        .transition(.opacity)
+                }
             } else {
                 emptyWebViewState
             }
 
+            // Show loading overlay while the WebView is loading (even after the agent is done)
             if isLoading {
-                loadingOverlay
+                webViewLoadingOverlay
             }
+        }
+    }
+
+    private func previewErrorOverlay(error: String, url: URL) -> some View {
+        ZStack {
+            Color.black.opacity(0.35).ignoresSafeArea()
+
+            VStack(spacing: Spacing.md) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 36))
+                    .foregroundColor(.warning)
+
+                Text("Preview failed to load")
+                    .font(.headline)
+                    .foregroundColor(.textPrimary)
+
+                Text(error)
+                    .font(.caption)
+                    .foregroundColor(.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(3)
+
+                Text(url.absoluteString)
+                    .font(.caption2)
+                    .foregroundColor(.textTertiary)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
+
+                HStack(spacing: Spacing.sm) {
+                    Button("Reload") {
+                        webViewLoadError = nil
+                        webViewReloadToken = UUID()
+                    }
+                    .buttonStyle(.borderedProminent)
+
+                    Button("Go to Chat") {
+                        withAnimation {
+                            selectedTab = .chat
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                }
+            }
+            .padding(Spacing.lg)
+            .background(Color.bgSecondary.opacity(0.95))
+            .cornerRadius(16)
+            .padding(.horizontal, Spacing.lg)
+        }
+    }
+
+    private var webViewLoadingOverlay: some View {
+        ZStack {
+            Color.black.opacity(0.25).ignoresSafeArea()
+
+            VStack(spacing: Spacing.md) {
+                ProgressView()
+                    .progressViewStyle(CircularProgressViewStyle(tint: .accentPrimary))
+                    .scaleEffect(1.2)
+
+                Text(webSocketService.agentState == .executing ? (webSocketService.agentMessage ?? "Building your app...") : "Loading preview…")
+                    .font(.body)
+                    .foregroundColor(.textPrimary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, Spacing.lg)
+            }
+            .padding(Spacing.xl)
+            .background(Color.bgSecondary.opacity(0.95))
+            .cornerRadius(16)
         }
     }
 
     private var emptyWebViewState: some View {
         VStack(spacing: Spacing.md) {
-            Image(systemName: "wand.and.stars")
+            Image(systemName: "play.rectangle")
                 .font(.system(size: 48))
                 .foregroundColor(.textSecondary)
 
-            Text("Hold the mic and speak")
+            Text("No app running")
                 .font(.headline)
                 .foregroundColor(.textPrimary)
 
-            Text("Try: 'Create a product dashboard'")
+            Text("Use the mic to build something!")
                 .font(.body)
                 .foregroundColor(.textSecondary)
+            
+            if !conversationMessages.isEmpty {
+                Text("Your last build may have expired.\nTry building again.")
+                    .font(.caption)
+                    .foregroundColor(.textTertiary)
+                    .multilineTextAlignment(.center)
+                    .padding(.top, Spacing.sm)
+            }
         }
     }
 
@@ -307,33 +704,87 @@ struct DevelopmentView: View {
                     .progressViewStyle(CircularProgressViewStyle(tint: .accentPrimary))
                     .scaleEffect(1.5)
 
-                Text("Building your app...")
+                // Show real-time status from backend
+                Text(webSocketService.agentMessage ?? "Building your app...")
                     .font(.body)
                     .foregroundColor(.textPrimary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, Spacing.lg)
+                    .animation(.easeInOut(duration: 0.2), value: webSocketService.agentMessage)
+                
+                // Show progress if available
+                if let progress = webSocketService.agentProgress {
+                    ProgressView(value: Double(progress), total: 100)
+                        .progressViewStyle(LinearProgressViewStyle(tint: .accentPrimary))
+                        .frame(width: 200)
+                }
             }
+            .padding(Spacing.xl)
+            .background(Color.bgSecondary.opacity(0.95))
+            .cornerRadius(16)
         }
     }
 
-    // MARK: - Database View
+    // MARK: - Chat View (Conversation History)
 
-    private var databaseView: some View {
-        DatabaseBrowserView()
+    private var chatView: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(spacing: Spacing.md) {
+                    if conversationMessages.isEmpty {
+                        // Empty state
+                        VStack(spacing: Spacing.md) {
+                            Image(systemName: "bubble.left.and.bubble.right")
+                                .font(.system(size: 48))
+                                .foregroundColor(.textSecondary)
+                            
+                            Text("Start a conversation")
+                                .font(.headline)
+                                .foregroundColor(.textPrimary)
+                            
+                            Text("Hold the mic and describe what you want to build")
+                                .font(.body)
+                                .foregroundColor(.textSecondary)
+                                .multilineTextAlignment(.center)
+                        }
+                        .padding(.top, 100)
+                    } else {
+                        ForEach(conversationMessages) { message in
+                            ChatBubble(message: message)
+                                .id(message.id)
+                        }
+                    }
+                }
+                .padding(Spacing.md)
+            }
+            .onChange(of: conversationMessages.count) { _, _ in
+                // Auto-scroll to latest message
+                if let lastMessage = conversationMessages.last {
+                    withAnimation {
+                        proxy.scrollTo(lastMessage.id, anchor: .bottom)
+                    }
+                }
+            }
+        }
+        .background(Color.bgPrimary)
     }
 
     // MARK: - Tab Bar
 
     private var tabBar: some View {
         HStack(spacing: 0) {
+            // Chat on LEFT
             tabBarItem(
-                icon: "app.fill",
-                title: "Output",
-                tab: .output
+                icon: "bubble.left.and.bubble.right.fill",
+                title: "Chat",
+                tab: .chat
             )
 
+            // Output on RIGHT
             tabBarItem(
-                icon: "cylinder.fill",
-                title: "Database",
-                tab: .database
+                icon: "play.rectangle.fill",
+                title: "Output",
+                tab: .output
             )
         }
         .frame(height: 50)
@@ -552,6 +1003,59 @@ class AudioStreamingHandler: AudioStreamingDelegate {
     func audioRecorder(didReceiveChunk data: Data) {
         // Forward audio chunk to WebSocket
         webSocketService.sendAudioChunk(data: data)
+    }
+}
+
+// MARK: - Chat Bubble Component
+
+struct ChatBubble: View {
+    let message: ConversationMessage
+    
+    var body: some View {
+        HStack {
+            if message.isUser {
+                Spacer()
+            }
+            
+            VStack(alignment: message.isUser ? .trailing : .leading, spacing: 4) {
+                // Header
+                HStack(spacing: 6) {
+                    if !message.isUser {
+                        Image(systemName: "sparkles")
+                            .font(.caption)
+                            .foregroundColor(.accentPrimary)
+                    }
+                    
+                    Text(message.isUser ? "You" : "Via")
+                        .font(.caption.weight(.semibold))
+                        .foregroundColor(message.isUser ? .textSecondary : .accentPrimary)
+                    
+                    Text(formatTime(message.timestamp))
+                        .font(.caption2)
+                        .foregroundColor(.textTertiary)
+                }
+                
+                // Message content
+                Text(message.text)
+                    .font(.body)
+                    .foregroundColor(.textPrimary)
+                    .multilineTextAlignment(message.isUser ? .trailing : .leading)
+            }
+            .padding(Spacing.md)
+            .background(message.isUser ? Color.accentPrimary.opacity(0.2) : Color.bgSecondary)
+            .cornerRadius(16)
+            .frame(maxWidth: UIScreen.main.bounds.width * 0.8, alignment: message.isUser ? .trailing : .leading)
+            
+            if !message.isUser {
+                Spacer()
+            }
+        }
+    }
+    
+    private func formatTime(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.timeStyle = .short
+        return formatter.string(from: date)
     }
 }
 

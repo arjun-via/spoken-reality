@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>WebSocket Test</title>
+    <style>
+        body { font-family: monospace; background: #1a1a1a; color: #fff; padding: 20px; }
+        #messages { background: #000; padding: 10px; height: 400px; overflow-y: auto; margin-bottom: 20px; }
+        .msg { margin: 5px 0; padding: 5px; border-left: 3px solid #666; }
+        .msg.sent { border-color: #4a9; }
+        .msg.received { border-color: #49f; }
+        .msg.error { border-color: #f44; }
+        button { padding: 10px 20px; margin: 5px; cursor: pointer; }
+        #status { padding: 10px; margin-bottom: 10px; }
+        .connected { background: #2a5; }
+        .disconnected { background: #a52; }
+    </style>
+</head>
+<body>
+    <h1>Via WebSocket Test</h1>
+    <div id="status" class="disconnected">Disconnected</div>
+    <div>
+        <button onclick="connect()">Connect</button>
+        <button onclick="disconnect()">Disconnect</button>
+        <button onclick="sendVoiceStart()">Send voice.start</button>
+        <button onclick="sendVoiceEnd()">Send voice.end</button>
+        <button onclick="sendCommand()">Send Command</button>
+    </div>
+    <div id="messages"></div>
+
+    <script>
+        let ws = null;
+        const messagesDiv = document.getElementById('messages');
+        const statusDiv = document.getElementById('status');
+
+        function log(text, type = 'info') {
+            const div = document.createElement('div');
+            div.className = `msg ${type}`;
+            div.textContent = `[${new Date().toISOString()}] ${text}`;
+            messagesDiv.appendChild(div);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        function connect() {
+            if (ws) ws.close();
+            
+            ws = new WebSocket('ws://localhost:3000/ws?token=test');
+            
+            ws.onopen = () => {
+                statusDiv.textContent = 'Connected';
+                statusDiv.className = 'connected';
+                log('Connected to WebSocket', 'sent');
+            };
+            
+            ws.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    log(`RECEIVED [${data.type}]: ${JSON.stringify(data.payload)}`, 'received');
+                    
+                    // Highlight agent.state messages
+                    if (data.type === 'agent.state') {
+                        log(`>>> STATE: ${data.payload.state} - ${data.payload.message || 'no message'}`, 'received');
+                    }
+                } catch (e) {
+                    log(`RAW: ${event.data}`, 'received');
+                }
+            };
+            
+            ws.onclose = () => {
+                statusDiv.textContent = 'Disconnected';
+                statusDiv.className = 'disconnected';
+                log('Disconnected', 'error');
+            };
+            
+            ws.onerror = (error) => {
+                log(`Error: ${error}`, 'error');
+            };
+        }
+
+        function disconnect() {
+            if (ws) ws.close();
+        }
+
+        function sendMessage(msg) {
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                log('Not connected!', 'error');
+                return;
+            }
+            const fullMsg = {
+                ...msg,
+                timestamp: Date.now(),
+                messageId: crypto.randomUUID()
+            };
+            ws.send(JSON.stringify(fullMsg));
+            log(`SENT [${msg.type}]: ${JSON.stringify(msg.payload || {})}`, 'sent');
+        }
+
+        function sendVoiceStart() {
+            sendMessage({
+                type: 'voice.start',
+                payload: { projectId: 'test-project' }
+            });
+        }
+
+        function sendVoiceEnd() {
+            sendMessage({
+                type: 'voice.end',
+                payload: {}
+            });
+        }
+
+        function sendCommand() {
+            const text = 'Build me a simple hello world app';
+            sendMessage({
+                type: 'command',
+                payload: { text, projectId: 'test-project' }
+            });
+        }
+    </script>
+</body>
+</html>

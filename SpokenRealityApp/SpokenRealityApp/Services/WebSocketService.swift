@@ -16,6 +16,15 @@ class WebSocketService: NSObject, ObservableObject {
     @Published var clarificationQuestion: String?
     @Published var clarificationOptions: [String]?
     @Published var lastError: BackendError?
+    @Published var generatedFiles: [GeneratedFile] = []
+
+    // Model for generated files
+    struct GeneratedFile: Identifiable {
+        let id = UUID()
+        let path: String
+        let content: String
+        var timestamp: Date = Date()
+    }
 
     // Connection state
     enum ConnectionState: Equatable {
@@ -42,7 +51,7 @@ class WebSocketService: NSObject, ObservableObject {
         // Local development URL - for testing with localhost backend
         // Use ws:// for local, wss:// for production
         #if DEBUG
-        self.serverURL = "ws://localhost:3000/ws"
+        self.serverURL = "ws://10.0.1.31:3000/ws" // Mac IP for iPhone testing
         #else
         self.serverURL = "wss://api.via.app/ws"
         #endif
@@ -232,6 +241,11 @@ class WebSocketService: NSObject, ObservableObject {
     }
 
     private func handleData(_ data: Data) {
+        // Debug: print raw message
+        if let jsonString = String(data: data, encoding: .utf8) {
+            print("📩 RAW MESSAGE: \(jsonString.prefix(200))...")
+        }
+        
         do {
             let decoder = JSONDecoder()
             let message = try decoder.decode(WebSocketMessage.self, from: data)
@@ -286,8 +300,13 @@ class WebSocketService: NSObject, ObservableObject {
             agentState = msg.payload.state
             agentMessage = msg.payload.message
             agentProgress = msg.payload.progress
+            print("✅ Agent state updated: \(msg.payload.state) - \(msg.payload.message ?? "no message")")
         } catch {
             print("❌ Failed to decode agent state: \(error)")
+            // Print raw data for debugging
+            if let jsonString = String(data: data, encoding: .utf8) {
+                print("📄 Raw JSON: \(jsonString)")
+            }
         }
     }
 
@@ -348,7 +367,24 @@ class WebSocketService: NSObject, ObservableObject {
                 let payload: PreviewReadyPayload
             }
             let msg = try JSONDecoder().decode(Message.self, from: data)
-            previewURL = URL(string: msg.payload.url)
+            print("🌐 Preview URL received: \(msg.payload.url)")
+            let newURL = URL(string: msg.payload.url)
+
+            // IMPORTANT:
+            // The preview URL can remain identical across builds (same sandbox/port host).
+            // SwiftUI's onChange won't fire if the value is equal, so we force a change by
+            // bouncing through nil when the URL hasn't changed.
+            if newURL == previewURL {
+                print("🌐 Preview URL unchanged — forcing a reload")
+                previewURL = nil
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                    self.previewURL = newURL
+                    print("🌐 Preview URL re-set to: \(String(describing: self.previewURL))")
+                }
+            } else {
+                previewURL = newURL
+                print("🌐 Preview URL set to: \(String(describing: previewURL))")
+            }
         } catch {
             print("❌ Failed to decode preview URL: \(error)")
         }
@@ -370,8 +406,22 @@ class WebSocketService: NSObject, ObservableObject {
                 let payload: CodeUpdatedPayload
             }
             let msg = try JSONDecoder().decode(Message.self, from: data)
-            // TODO: Update code inspection view with new files
-            print("📝 Code updated: \(msg.payload.files.count) files")
+
+            // Store the generated files
+            let newFiles = msg.payload.files.map { file in
+                GeneratedFile(path: file.path, content: file.content)
+            }
+
+            // Update existing files or add new ones
+            for newFile in newFiles {
+                if let index = generatedFiles.firstIndex(where: { $0.path == newFile.path }) {
+                    generatedFiles[index] = newFile
+                } else {
+                    generatedFiles.append(newFile)
+                }
+            }
+
+            print("📝 Code updated: \(msg.payload.files.count) files, total: \(generatedFiles.count)")
         } catch {
             print("❌ Failed to decode code update: \(error)")
         }

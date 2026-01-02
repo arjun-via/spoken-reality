@@ -40,6 +40,9 @@ class AudioRecordingService: NSObject, ObservableObject {
     // Streaming delegate
     weak var streamingDelegate: AudioStreamingDelegate?
 
+    // Mock mode for testing without microphone
+    var useMockRecording: Bool = false // Set to false for real microphone
+
     // Singleton
     static let shared = AudioRecordingService()
 
@@ -77,6 +80,16 @@ class AudioRecordingService: NSObject, ObservableObject {
     // MARK: - Recording Control
 
     func startRecording() async throws {
+        if useMockRecording {
+            // Mock recording mode - no microphone needed
+            print("🎤 Starting MOCK recording (no microphone)")
+            recordingState = .recording
+            recordingDuration = 0
+            startMockRecording()
+            return
+        }
+
+        // Real recording mode
         // Request permission if needed
         if !permissionGranted {
             let granted = await requestPermission()
@@ -129,6 +142,13 @@ class AudioRecordingService: NSObject, ObservableObject {
     }
 
     func stopRecording() {
+        if useMockRecording {
+            print("🎤 Stopping MOCK recording")
+            stopMockRecording()
+            recordingState = .stopped
+            return
+        }
+
         audioRecorder?.stop()
         recordingState = .stopped
 
@@ -257,6 +277,67 @@ class AudioRecordingService: NSObject, ObservableObject {
 
     func cleanup() {
         cancelRecording()
+    }
+
+    // MARK: - Mock Recording (for testing without microphone)
+
+    private func startMockRecording() {
+        // Duration timer
+        recordingTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                guard let self = self else { return }
+                self.recordingDuration += 0.1
+            }
+        }
+
+        // Audio level animation (fake waveform)
+        levelTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                guard let self = self else { return }
+                // Simulate audio level with random variation
+                self.audioLevel = Float.random(in: 0.3...0.9)
+            }
+        }
+
+        // Streaming timer - send fake audio chunks
+        streamingTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                guard let self = self else { return }
+                self.sendMockAudioChunk()
+            }
+        }
+
+        print("🎤 Mock recording started - sending fake audio chunks")
+    }
+
+    private func stopMockRecording() {
+        recordingTimer?.invalidate()
+        recordingTimer = nil
+        levelTimer?.invalidate()
+        levelTimer = nil
+        streamingTimer?.invalidate()
+        streamingTimer = nil
+
+        print("🎤 Mock recording stopped")
+    }
+
+    private func sendMockAudioChunk() {
+        guard let delegate = streamingDelegate else { return }
+
+        // Generate fake PCM audio data (16KB chunk)
+        // In reality this would be silence or test tone
+        let chunkSize = 16 * 1024
+        var mockData = Data(count: chunkSize)
+        mockData.withUnsafeMutableBytes { buffer in
+            // Fill with random values to simulate audio
+            if let baseAddress = buffer.baseAddress {
+                for i in 0..<chunkSize {
+                    baseAddress.storeBytes(of: UInt8.random(in: 0...255), toByteOffset: i, as: UInt8.self)
+                }
+            }
+        }
+
+        delegate.audioRecorder(didReceiveChunk: mockData)
     }
 }
 
