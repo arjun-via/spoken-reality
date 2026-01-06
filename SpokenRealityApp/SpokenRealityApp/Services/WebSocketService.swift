@@ -49,7 +49,7 @@ class WebSocketService: NSObject, ObservableObject {
 
     private override init() {
         // Production URL on Railway
-        self.serverURL = "wss://spoken-reality-production.up.railway.app/ws"
+        self.serverURL = "wss://spoken-reality-production-9cd5.up.railway.app/ws"
         super.init()
 
         let configuration = URLSessionConfiguration.default

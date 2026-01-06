@@ -79,13 +79,22 @@ export function initWebSocketServer(httpServer: Server): WebSocketServer {
       }
     });
 
+    // #region agent log - Track connection timing
+    const connectionStartTime = Date.now();
+    // #endregion
+
     // Handle disconnection
     ws.on('close', (code, reason) => {
-      logger.info('Client disconnected', { 
+      // #region agent log - Debug disconnection with timing
+      const connectionDuration = Date.now() - connectionStartTime;
+      logger.warn('CLIENT DISCONNECTED - DEBUG', { 
         userId: ws.userId, 
         code, 
         reason: reason.toString(),
+        connectionDurationMs: connectionDuration,
+        connectionDurationSec: (connectionDuration / 1000).toFixed(1),
       });
+      // #endregion
       
       if (ws.userId) {
         connections.delete(ws.userId);
@@ -94,7 +103,13 @@ export function initWebSocketServer(httpServer: Server): WebSocketServer {
 
     // Handle errors
     ws.on('error', (error) => {
-      logger.error('WebSocket error', error);
+      // #region agent log - Debug WebSocket errors
+      logger.error('WEBSOCKET ERROR - DEBUG', { 
+        userId: ws.userId,
+        error: error.message,
+        stack: error.stack,
+      });
+      // #endregion
     });
 
     // Heartbeat to keep connection alive
