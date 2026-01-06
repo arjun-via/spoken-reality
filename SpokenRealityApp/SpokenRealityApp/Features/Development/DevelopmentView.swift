@@ -243,9 +243,10 @@ struct DevelopmentView: View {
                     webViewReloadToken = UUID()
                 }
             }
-            .onDisappear {
-                webSocketService.disconnect()
-            }
+            // NOTE: Do NOT disconnect on disappear - the view can disappear temporarily
+            // (e.g., when sheets appear, tabs switch, or app goes to background)
+            // and we need to keep the connection alive during AI processing.
+            // The WebSocket will auto-reconnect if needed.
             .onChange(of: webSocketService.agentState) { oldState, newState in
                 handleAgentStateChange(newState)
             }
