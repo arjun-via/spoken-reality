@@ -41,6 +41,11 @@ export interface AgentResult {
   error?: string;
 }
 
+export interface ConversationMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
 // ============================================
 // TOOL DEFINITIONS
 // ============================================
@@ -251,9 +256,10 @@ export async function processCommand(
   projectId: string,
   command: string,
   existingFiles?: ProjectFile[],
-  onProgress?: (state: string, message: string) => void
+  onProgress?: (state: string, message: string) => void,
+  conversationHistory?: ConversationMessage[]
 ): Promise<AgentResult> {
-  logger.info('Processing command', { projectId, command });
+  logger.info('Processing command', { projectId, command, historyLength: conversationHistory?.length || 0 });
 
   const writtenFiles: ProjectFile[] = [];
   let explanation = '';
@@ -262,13 +268,22 @@ export async function processCommand(
     // Build initial context
     let userMessage = command;
     if (existingFiles && existingFiles.length > 0) {
-      userMessage += `\n\nExisting project files:\n${existingFiles.map(f => `- ${f.path}`).join('\n')}`;
+      userMessage += `\n\nCurrent project files:\n${existingFiles.map(f => `- ${f.path}`).join('\n')}`;
     }
 
-    // Start conversation
-    const messages: Anthropic.MessageParam[] = [
-      { role: 'user', content: userMessage },
-    ];
+    // Start conversation with history
+    const messages: Anthropic.MessageParam[] = [];
+
+    // Add conversation history for multi-turn context
+    if (conversationHistory && conversationHistory.length > 0) {
+      for (const msg of conversationHistory) {
+        messages.push({ role: msg.role, content: msg.content });
+      }
+      logger.info('Added conversation history', { messageCount: conversationHistory.length });
+    }
+
+    // Add current user message
+    messages.push({ role: 'user', content: userMessage });
 
     // Agentic loop - let Claude use tools until done
     let iterations = 0;

@@ -46,8 +46,8 @@ const httpServer = createServer(app);
 // Initialize WebSocket server
 initWebSocketServer(httpServer);
 
-// Start server
-httpServer.listen(env.PORT, () => {
+// Start server - bind to 0.0.0.0 for Railway/Docker
+httpServer.listen(env.PORT, '0.0.0.0', () => {
   logger.info(`🚀 Via Backend running on port ${env.PORT}`);
   logger.info(`   Environment: ${env.NODE_ENV}`);
   logger.info(`   WebSocket: ws://localhost:${env.PORT}/ws`);

@@ -48,13 +48,8 @@ class WebSocketService: NSObject, ObservableObject {
     static let shared = WebSocketService()
 
     private override init() {
-        // Local development URL - for testing with localhost backend
-        // Use ws:// for local, wss:// for production
-        #if DEBUG
-        self.serverURL = "ws://10.0.1.31:3000/ws" // Mac IP for iPhone testing
-        #else
-        self.serverURL = "wss://api.via.app/ws"
-        #endif
+        // Production URL on Railway
+        self.serverURL = "wss://spoken-reality-production.up.railway.app/ws"
         super.init()
 
         let configuration = URLSessionConfiguration.default
@@ -196,6 +191,13 @@ class WebSocketService: NSObject, ObservableObject {
     func getProjectFiles(projectId: String) {
         let message = ProjectGetFilesMessage(projectId: projectId).toWebSocketMessage()
         send(message)
+    }
+
+    // MARK: - Git Messages
+
+    func sendGitCommit(message: String, projectId: String) {
+        let gitMessage = GitCommitMessage(message: message, projectId: projectId).toWebSocketMessage()
+        send(gitMessage)
     }
 
     // MARK: - Receiving Messages

@@ -58,7 +58,8 @@ export type ClientMessageType =
   | 'command'
   | 'project.create'
   | 'project.open'
-  | 'project.getFiles';
+  | 'project.getFiles'
+  | 'git.commit';
 
 // ============================================
 // SERVER → CLIENT MESSAGES

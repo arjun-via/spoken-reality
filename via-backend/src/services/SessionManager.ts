@@ -18,11 +18,18 @@ export type AgentState =
   | 'PRESENTING'
   | 'ERROR';
 
+export interface ConversationMessage {
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: Date;
+}
+
 export interface UserSession {
   userId: string;
   sessionId: string;
   state: AgentState;
   currentProjectId?: string;
+  conversationHistory: ConversationMessage[];
   lastActiveAt: Date;
   createdAt: Date;
 }
@@ -41,6 +48,7 @@ export function getOrCreateSession(userId: string): UserSession {
       userId,
       sessionId: `session_${Date.now()}`,
       state: 'IDLE',
+      conversationHistory: [],
       lastActiveAt: new Date(),
       createdAt: new Date(),
     };
@@ -111,4 +119,45 @@ export function getActiveSessions(): UserSession[] {
  */
 export function getSessionCount(): number {
   return sessions.size;
+}
+
+/**
+ * Add message to conversation history
+ */
+export function addToConversation(userId: string, role: 'user' | 'assistant', content: string): void {
+  const session = sessions.get(userId);
+  if (session) {
+    session.conversationHistory.push({
+      role,
+      content,
+      timestamp: new Date(),
+    });
+    session.lastActiveAt = new Date();
+
+    // Keep only last 20 messages to prevent context overflow
+    if (session.conversationHistory.length > 20) {
+      session.conversationHistory = session.conversationHistory.slice(-20);
+    }
+
+    logger.debug('Added to conversation', { userId, role, messageCount: session.conversationHistory.length });
+  }
+}
+
+/**
+ * Get conversation history for session
+ */
+export function getConversationHistory(userId: string): ConversationMessage[] {
+  const session = sessions.get(userId);
+  return session?.conversationHistory || [];
+}
+
+/**
+ * Clear conversation history (for new project)
+ */
+export function clearConversationHistory(userId: string): void {
+  const session = sessions.get(userId);
+  if (session) {
+    session.conversationHistory = [];
+    logger.info('Cleared conversation history', { userId });
+  }
 }

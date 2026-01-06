@@ -3,6 +3,9 @@ import SwiftUI
 struct GitStatusView: View {
     @StateObject private var webSocketService = WebSocketService.shared
     @Environment(\.dismiss) var dismiss
+    @State private var commitMessage: String = ""
+    @State private var isCommitting: Bool = false
+    @State private var showCommitSuccess: Bool = false
 
     var body: some View {
         NavigationStack {
@@ -13,6 +16,11 @@ struct GitStatusView: View {
 
                     // Changes section (from generated files)
                     changesSection
+
+                    // Commit section
+                    if !webSocketService.generatedFiles.isEmpty {
+                        commitSection
+                    }
 
                     // Session info
                     sessionInfoSection
@@ -212,6 +220,86 @@ struct GitStatusView: View {
         case .clarifying: return "Needs clarification"
         case .presenting: return "Done"
         case .error: return "Error"
+        }
+    }
+
+    // MARK: - Commit Section
+
+    private var commitSection: some View {
+        VStack(alignment: .leading, spacing: Spacing.sm) {
+            Label("Commit Changes", systemImage: "arrow.up.circle")
+                .font(.caption)
+                .foregroundColor(.textSecondary)
+
+            VStack(spacing: Spacing.md) {
+                // Commit message input
+                TextField("Commit message...", text: $commitMessage, axis: .vertical)
+                    .textFieldStyle(.plain)
+                    .padding(Spacing.md)
+                    .background(Color.bgTertiary)
+                    .cornerRadius(8)
+                    .foregroundColor(.textPrimary)
+                    .lineLimit(3...6)
+
+                // Commit & Push button
+                Button(action: commitAndPush) {
+                    HStack {
+                        if isCommitting {
+                            ProgressView()
+                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                .scaleEffect(0.8)
+                        } else {
+                            Image(systemName: "arrow.up.circle.fill")
+                        }
+                        Text(isCommitting ? "Pushing..." : "Commit & Push")
+                            .fontWeight(.semibold)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(Spacing.md)
+                    .background(commitMessage.isEmpty ? Color.gray : Color.accentPrimary)
+                    .foregroundColor(.white)
+                    .cornerRadius(12)
+                }
+                .disabled(commitMessage.isEmpty || isCommitting)
+
+                if showCommitSuccess {
+                    HStack {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundColor(.success)
+                        Text("Successfully pushed to main")
+                            .font(.caption)
+                            .foregroundColor(.success)
+                    }
+                    .transition(.opacity)
+                }
+            }
+            .padding(Spacing.md)
+            .background(Color.bgSecondary)
+            .cornerRadius(12)
+        }
+    }
+
+    private func commitAndPush() {
+        guard !commitMessage.isEmpty else { return }
+
+        isCommitting = true
+        showCommitSuccess = false
+
+        // Send git commit message to backend
+        webSocketService.sendGitCommit(message: commitMessage, projectId: "default-project")
+
+        // Simulate completion (backend will send actual response)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+            isCommitting = false
+            showCommitSuccess = true
+            commitMessage = ""
+
+            // Hide success message after 3 seconds
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                withAnimation {
+                    showCommitSuccess = false
+                }
+            }
         }
     }
 

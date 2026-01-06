@@ -107,6 +107,21 @@ struct ProjectGetFilesMessage {
     }
 }
 
+struct GitCommitMessage {
+    let message: String
+    let projectId: String
+
+    func toWebSocketMessage() -> WebSocketMessage {
+        WebSocketMessage(
+            type: "git.commit",
+            payload: [
+                "message": AnyCodable(message),
+                "projectId": AnyCodable(projectId)
+            ]
+        )
+    }
+}
+
 // MARK: - Incoming Messages (Server → Client)
 
 struct AgentStatePayload: Codable {

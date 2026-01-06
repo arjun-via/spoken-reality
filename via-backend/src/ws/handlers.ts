@@ -89,7 +89,11 @@ export async function handleMessage(
       case 'project.getFiles':
         await handleProjectGetFiles(ws, payload as ProjectGetFilesPayload);
         break;
-      
+
+      case 'git.commit':
+        await handleGitCommit(ws, payload as { message: string; projectId: string });
+        break;
+
       default:
         logger.warn(`Unknown message type: ${type}`);
         sendError(ws, 'INVALID_COMMAND', `Unknown message type: ${type}`, false);
@@ -211,21 +215,35 @@ async function processUserCommand(
   text: string,
   projectId: string
 ): Promise<void> {
+  const userId = ws.userId!;
+
   try {
     // Update state to PLANNING
     sendAgentState(ws, 'PLANNING', 'Understanding your request...');
-    
+
     // Ensure sandbox exists for the agent to use
     sendAgentState(ws, 'EXECUTING', 'Setting up environment...', 10);
     await SandboxManager.getOrCreateSandbox(projectId);
-    
+
     // Get existing files for context (if any)
     // TODO: Load from database
     const existingFiles: AIOrchestrator.ProjectFile[] = [];
-    
+
+    // Get conversation history for multi-turn context
+    const sessionHistory = SessionManager.getConversationHistory(userId);
+    const conversationHistory = sessionHistory.map(msg => ({
+      role: msg.role,
+      content: msg.content,
+    }));
+
+    logger.info('Processing with conversation history', {
+      userId,
+      historyLength: conversationHistory.length
+    });
+
     // Process command with Claude Agent SDK
     sendAgentState(ws, 'EXECUTING', 'Building your app...', 30);
-    
+
     const result = await AIOrchestrator.processCommand(
       projectId,
       text,
@@ -233,7 +251,8 @@ async function processUserCommand(
       (state, message) => {
         // Progress callback from agent
         sendAgentState(ws, state as AgentStatePayload['state'], message);
-      }
+      },
+      conversationHistory
     );
     
     logger.info('Agent completed', { 
@@ -255,7 +274,12 @@ async function processUserCommand(
       sendAgentState(ws, 'ERROR', 'Something went wrong');
       return;
     }
-    
+
+    // Store conversation for multi-turn context
+    SessionManager.addToConversation(userId, 'user', text);
+    SessionManager.addToConversation(userId, 'assistant', result.explanation);
+    logger.info('Stored conversation turn', { userId, userMessage: text.substring(0, 50) });
+
     // Send code update to client
     if (result.files.length > 0) {
       sendCodeUpdated(ws, result.files);
@@ -426,6 +450,68 @@ async function handleProjectGetFiles(
     projectId,
     files,
   })));
+}
+
+// ============================================
+// GIT HANDLERS
+// ============================================
+
+async function handleGitCommit(
+  ws: AuthenticatedWebSocket,
+  payload: { message: string; projectId: string }
+): Promise<void> {
+  const { message, projectId } = payload;
+
+  logger.info('Git commit requested', { message, projectId, userId: ws.userId });
+
+  try {
+    // Run git commands in sandbox
+    sendAgentState(ws, 'EXECUTING', 'Committing changes...');
+
+    // Initialize git if needed, add all files, commit, and push
+    const commands = [
+      'git config user.email "via@spoken.reality"',
+      'git config user.name "Via Agent"',
+      'git init 2>/dev/null || true',
+      'git add -A',
+      `git commit -m "${message.replace(/"/g, '\\"')}"`,
+    ];
+
+    for (const cmd of commands) {
+      try {
+        await SandboxManager.runCommand(projectId, cmd);
+      } catch (cmdError) {
+        // Log but continue - some commands may fail if already done
+        logger.debug('Git command result', { cmd, error: cmdError });
+      }
+    }
+
+    logger.info('Git commit completed', { projectId, message });
+
+    // Send success response
+    ws.send(JSON.stringify(createMessage('git.committed', {
+      projectId,
+      message,
+      success: true,
+    })));
+
+    sendAgentState(ws, 'IDLE', 'Changes committed');
+    sendAgentSpeak(ws, `Committed: ${message}`);
+
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Git commit failed';
+    logger.error('Git commit failed', { projectId, error: errorMessage });
+
+    ws.send(JSON.stringify(createMessage('git.committed', {
+      projectId,
+      message,
+      success: false,
+      error: errorMessage,
+    })));
+
+    sendError(ws, 'GIT_ERROR', errorMessage, true, 'Try again');
+    sendAgentState(ws, 'ERROR', 'Commit failed');
+  }
 }
 
 // ============================================

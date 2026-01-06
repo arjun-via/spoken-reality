@@ -20,7 +20,7 @@ struct ConversationMessage: Identifiable {
 }
 
 struct DevelopmentView: View {
-    @State private var selectedTab: DevelopmentTab = .output
+    @State private var selectedTab: DevelopmentTab = .chat
     @State private var isLoading = false
     @State private var showProgress = false
     @State private var webViewLoadError: String? = nil
@@ -471,7 +471,37 @@ struct DevelopmentView: View {
     private var toolbarContent: some ToolbarContent {
         Group {
             ToolbarItem(placement: .navigationBarLeading) {
-                connectionStatusIndicator
+                HStack(spacing: 12) {
+                    connectionStatusIndicator
+
+                    // Navigation to Git (down)
+                    Button(action: {
+                        withAnimation(.interactiveSpring(response: 0.4, dampingFraction: 0.8)) {
+                            verticalScreen = .git
+                        }
+                    }) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "chevron.down")
+                            Text("Git")
+                        }
+                        .font(.subheadline)
+                        .foregroundColor(.green)
+                    }
+
+                    // Navigation to Code (up)
+                    Button(action: {
+                        withAnimation(.interactiveSpring(response: 0.4, dampingFraction: 0.8)) {
+                            verticalScreen = .code
+                        }
+                    }) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "chevron.up")
+                            Text("Code")
+                        }
+                        .font(.subheadline)
+                        .foregroundColor(.accentPrimary)
+                    }
+                }
             }
 
             ToolbarItem(placement: .navigationBarTrailing) {
@@ -479,12 +509,6 @@ struct DevelopmentView: View {
                     Button(action: { showSettings = true }) {
                         Label("Settings", systemImage: "gear")
                     }
-
-                    Divider()
-
-                    // Navigation hints
-                    Text("Swipe up for Code")
-                    Text("Swipe down for Git")
                 } label: {
                     Image(systemName: "ellipsis.circle")
                         .foregroundColor(.accentPrimary)
