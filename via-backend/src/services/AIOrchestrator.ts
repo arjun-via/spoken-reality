@@ -190,6 +190,8 @@ const sampleData = [
 ## Response Format
 After completing the task, end with a brief natural language explanation of what you built. This will be spoken to the user.
 
+IMPORTANT: Do NOT tell the user to run commands like "npm install" or "npm run dev" - these are handled automatically by the system. Just describe what you built and its features. The preview will appear automatically.
+
 If the request is unclear, ask a clarifying question instead of guessing.`;
 
 // ============================================
