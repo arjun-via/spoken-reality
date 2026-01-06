@@ -258,11 +258,11 @@ export async function startDevServer(projectId: string): Promise<string> {
     await sandboxInfo.sandbox.commands.run('npm install', { timeoutMs: 6 * 60 * 1000 });
     
     // Start dev server in background with host 0.0.0.0 for external access
-    // Note: This runs Vite/Next.js dev server
-    sandboxInfo.sandbox.commands.run('npm run dev -- --hostname 0.0.0.0 --port 3000', { background: true });
+    // Note: Next.js 14+ uses -H for hostname, older versions use --hostname
+    sandboxInfo.sandbox.commands.run('npm run dev -- -H 0.0.0.0 -p 3000', { background: true });
     
-    // Wait a moment for server to start
-    await new Promise(resolve => setTimeout(resolve, 5000));
+    // Wait for server to start - Next.js can take 10-15 seconds on first compile
+    await new Promise(resolve => setTimeout(resolve, 10000));
     
     // Get the public URL using E2B's getHost method
     const publicUrl = `https://${sandboxInfo.sandbox.getHost(3000)}`;
