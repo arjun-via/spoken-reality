@@ -158,7 +158,8 @@ export type ServerMessageType =
   | 'error'
   | 'project.created'
   | 'project.opened'
-  | 'project.files';
+  | 'project.files'
+  | 'git.committed';
 
 // ============================================
 // HELPER FUNCTIONS

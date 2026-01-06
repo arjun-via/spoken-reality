@@ -46,12 +46,14 @@ const httpServer = createServer(app);
 // Initialize WebSocket server
 initWebSocketServer(httpServer);
 
-// Start server
-httpServer.listen(env.PORT, () => {
-  logger.info(`🚀 Via Backend running on port ${env.PORT}`);
+// Start server - bind to 0.0.0.0 for Railway/container environments
+const HOST = '0.0.0.0';
+httpServer.listen(env.PORT, HOST, () => {
+  logger.info(`🚀 Via Backend running on ${HOST}:${env.PORT}`);
   logger.info(`   Environment: ${env.NODE_ENV}`);
-  logger.info(`   WebSocket: ws://localhost:${env.PORT}/ws`);
-  logger.info(`   Health: http://localhost:${env.PORT}/api/health`);
+  logger.info(`   PORT env var: ${process.env.PORT || 'not set, using default 3000'}`);
+  logger.info(`   WebSocket: ws://${HOST}:${env.PORT}/ws`);
+  logger.info(`   Health: http://${HOST}:${env.PORT}/api/health`);
 });
 
 // Graceful shutdown
