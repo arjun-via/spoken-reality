@@ -1,11 +1,7 @@
 import SwiftUI
 
 struct HomeView: View {
-    @State private var projects: [Project] = [
-        Project(name: "Product Dashboard", lastEdited: Date().addingTimeInterval(-3600)),
-        Project(name: "Admin Panel", lastEdited: Date().addingTimeInterval(-7200)),
-        Project(name: "E-commerce Store", lastEdited: Date().addingTimeInterval(-86400)),
-    ]
+    @State private var projects: [Project] = []
 
     @State private var selectedProject: Project?
     @State private var showDevelopmentView = false
