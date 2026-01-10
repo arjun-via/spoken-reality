@@ -22,6 +22,7 @@ const sandboxes = new Map<string, {
   url: string;
   createdAt: Date;
   expiresAt: Date;
+  npmInstalled?: boolean; // Track if npm install was already done (e.g., from pre-warming)
 }>();
 
 // Sandbox configuration
@@ -255,7 +256,7 @@ export async function startDevServer(projectId: string): Promise<string> {
     throw new SandboxError('Sandbox not found for project');
   }
   
-  logger.info('Starting dev server', { projectId });
+  logger.info('Starting dev server', { projectId, npmAlreadyInstalled: sandboxInfo.npmInstalled });
   
   try {
     // Ensure the sandbox has a runnable Next.js project.
@@ -263,15 +264,25 @@ export async function startDevServer(projectId: string): Promise<string> {
     // (e.g., `app/page.tsx`), but a fresh sandbox won't have `package.json`, etc.
     await ensureNextJsScaffold(sandboxInfo.sandbox, projectId);
 
-    // Install dependencies and start dev server
-    await sandboxInfo.sandbox.commands.run('npm install', { timeoutMs: 6 * 60 * 1000 });
+    // Install dependencies only if not already done (e.g., from pre-warming)
+    if (!sandboxInfo.npmInstalled) {
+      logger.info('Running npm install...', { projectId });
+      await sandboxInfo.sandbox.commands.run('npm install', { timeoutMs: 6 * 60 * 1000 });
+      sandboxInfo.npmInstalled = true;
+    } else {
+      logger.info('Skipping npm install (already done from pre-warming)', { projectId });
+    }
     
     // Start dev server in background with host 0.0.0.0 for external access
     // Note: Next.js 14+ uses -H for hostname, older versions use --hostname
+    logger.info('Starting Next.js dev server...', { projectId });
     sandboxInfo.sandbox.commands.run('npm run dev -- -H 0.0.0.0 -p 3000', { background: true });
     
-    // Wait for server to start - Next.js can take 10-15 seconds on first compile
-    await new Promise(resolve => setTimeout(resolve, 10000));
+    // Wait for server to start - Next.js can take 15-20 seconds on first compile
+    // If npm was pre-installed, it should be faster
+    const waitTime = sandboxInfo.npmInstalled ? 15000 : 20000;
+    logger.info(`Waiting ${waitTime/1000}s for dev server to start...`, { projectId });
+    await new Promise(resolve => setTimeout(resolve, waitTime));
     
     // Get the public URL using E2B's getHost method
     const publicUrl = `https://${sandboxInfo.sandbox.getHost(3000)}`;
@@ -562,6 +573,7 @@ export function consumePrewarmedSandbox(projectId: string): boolean {
     url: prewarmedSandbox.url,
     createdAt: prewarmedSandbox.createdAt,
     expiresAt: prewarmedSandbox.expiresAt,
+    npmInstalled: prewarmedSandbox.npmInstalled, // Preserve the npm install status
   });
   
   logger.info('Using pre-warmed sandbox', { projectId, sandboxId: prewarmedSandbox.sandbox.sandboxId });
