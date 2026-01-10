@@ -83,7 +83,7 @@ struct CodeInspectionView: View {
                 .font(.caption)
                 .foregroundColor(.textTertiary)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .padding()
     }
 
@@ -134,51 +134,54 @@ struct CodeInspectionView: View {
     }
 
     private func codeContentView(content: String, filename: String) -> some View {
-        ScrollView([.horizontal, .vertical]) {
-            VStack(alignment: .leading, spacing: 0) {
-                // File header
-                HStack {
-                    Image(systemName: iconForFile(filename))
-                        .foregroundColor(colorForFile(filename))
-                    Text(fileName(from: filename))
-                        .font(.caption)
-                        .foregroundColor(.textSecondary)
-                    Spacer()
-                    Text("\(content.components(separatedBy: "\n").count) lines")
-                        .font(.caption2)
-                        .foregroundColor(.textTertiary)
-                }
-                .padding(Spacing.sm)
-                .background(Color.bgSecondary)
-
-                // Code content with line numbers
-                HStack(alignment: .top, spacing: 0) {
-                    // Line numbers
-                    VStack(alignment: .trailing, spacing: 0) {
-                        ForEach(Array(content.components(separatedBy: "\n").enumerated()), id: \.offset) { index, _ in
-                            Text("\(index + 1)")
-                                .font(.system(size: 11, design: .monospaced))
-                                .foregroundColor(.textTertiary)
-                                .frame(width: 35, alignment: .trailing)
-                                .padding(.vertical, 1)
-                        }
+        GeometryReader { geometry in
+            ScrollView([.horizontal, .vertical]) {
+                VStack(alignment: .leading, spacing: 0) {
+                    // File header
+                    HStack {
+                        Image(systemName: iconForFile(filename))
+                            .foregroundColor(colorForFile(filename))
+                        Text(fileName(from: filename))
+                            .font(.caption)
+                            .foregroundColor(.textSecondary)
+                        Spacer()
+                        Text("\(content.components(separatedBy: "\n").count) lines")
+                            .font(.caption2)
+                            .foregroundColor(.textTertiary)
                     }
-                    .padding(.horizontal, Spacing.xs)
+                    .padding(Spacing.sm)
                     .background(Color.bgSecondary)
 
-                    // Code
-                    VStack(alignment: .leading, spacing: 0) {
-                        ForEach(Array(content.components(separatedBy: "\n").enumerated()), id: \.offset) { _, line in
-                            Text(line.isEmpty ? " " : line)
-                                .font(.system(size: 11, design: .monospaced))
-                                .foregroundColor(.textPrimary)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.vertical, 1)
+                    // Code content with line numbers
+                    HStack(alignment: .top, spacing: 0) {
+                        // Line numbers
+                        VStack(alignment: .trailing, spacing: 0) {
+                            ForEach(Array(content.components(separatedBy: "\n").enumerated()), id: \.offset) { index, _ in
+                                Text("\(index + 1)")
+                                    .font(.system(size: 11, design: .monospaced))
+                                    .foregroundColor(.textTertiary)
+                                    .frame(width: 35, alignment: .trailing)
+                                    .padding(.vertical, 1)
+                            }
                         }
+                        .padding(.horizontal, Spacing.xs)
+                        .background(Color.bgSecondary)
+
+                        // Code
+                        VStack(alignment: .leading, spacing: 0) {
+                            ForEach(Array(content.components(separatedBy: "\n").enumerated()), id: \.offset) { _, line in
+                                Text(line.isEmpty ? " " : line)
+                                    .font(.system(size: 11, design: .monospaced))
+                                    .foregroundColor(.textPrimary)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(.vertical, 1)
+                            }
+                        }
+                        .padding(.horizontal, Spacing.sm)
                     }
-                    .padding(.horizontal, Spacing.sm)
+                    .padding(.top, Spacing.sm)
                 }
-                .padding(.top, Spacing.sm)
+                .frame(minWidth: geometry.size.width, minHeight: geometry.size.height, alignment: .topLeading)
             }
         }
     }
@@ -193,7 +196,8 @@ struct CodeInspectionView: View {
                 .font(.body)
                 .foregroundColor(.textSecondary)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .padding()
     }
 
     // MARK: - Helpers

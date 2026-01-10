@@ -55,7 +55,16 @@ export async function getOrCreateSandbox(projectId: string): Promise<{
     }
   }
   
-  logger.info('Creating new sandbox', { projectId });
+  // Try to use a pre-warmed sandbox (much faster!)
+  if (consumePrewarmedSandbox(projectId)) {
+    const sandboxInfo = sandboxes.get(projectId)!;
+    return {
+      sandboxId: sandboxInfo.sandbox.sandboxId,
+      url: sandboxInfo.url,
+    };
+  }
+  
+  logger.info('Creating new sandbox (no pre-warmed available)', { projectId });
   
   try {
     // Create new sandbox with 30-minute timeout
@@ -475,3 +484,216 @@ export async function cleanupExpiredSandboxes(): Promise<void> {
 
 // Run cleanup every hour
 setInterval(cleanupExpiredSandboxes, 60 * 60 * 1000);
+
+// Track pre-warmed sandbox (ready for use)
+let prewarmedSandbox: {
+  sandbox: Sandbox;
+  projectId: string;
+  url: string;
+  createdAt: Date;
+  expiresAt: Date;
+  npmInstalled: boolean;
+} | null = null;
+
+/**
+ * Pre-warm a sandbox in the background.
+ * Creates the sandbox, sets up Next.js scaffold, and runs npm install.
+ * This is called when a WebSocket connection is established.
+ */
+export async function prewarmSandbox(): Promise<void> {
+  // Don't pre-warm if we already have one ready
+  if (prewarmedSandbox) {
+    logger.debug('Pre-warmed sandbox already exists, skipping');
+    return;
+  }
+
+  logger.info('Pre-warming sandbox in background...');
+  
+  try {
+    const sandbox = await Sandbox.create({
+      apiKey: env.E2B_API_KEY,
+      timeoutMs: SANDBOX_TIMEOUT,
+    });
+
+    await sandbox.setTimeout(SANDBOX_TIMEOUT);
+    
+    const url = `https://${sandbox.sandboxId}.e2b.dev`;
+    const projectId = `prewarm_${Date.now()}`;
+    
+    logger.info('Pre-warmed sandbox created, setting up Next.js scaffold...', { sandboxId: sandbox.sandboxId });
+
+    // Set up the Next.js scaffold
+    await ensureNextJsScaffoldForPrewarm(sandbox, projectId);
+    
+    logger.info('Running npm install in pre-warmed sandbox...');
+    
+    // Run npm install (the expensive part)
+    await sandbox.commands.run('npm install', { timeoutMs: 6 * 60 * 1000 });
+    
+    prewarmedSandbox = {
+      sandbox,
+      projectId,
+      url,
+      createdAt: new Date(),
+      expiresAt: new Date(Date.now() + SANDBOX_TIMEOUT),
+      npmInstalled: true,
+    };
+    
+    logger.info('Sandbox pre-warmed and ready!', { sandboxId: sandbox.sandboxId, url });
+  } catch (error) {
+    logger.error('Failed to pre-warm sandbox', error);
+    // Non-fatal - the normal flow will create a sandbox when needed
+  }
+}
+
+/**
+ * Get a pre-warmed sandbox if available, otherwise create a new one.
+ * This is called by getOrCreateSandbox when a sandbox is needed.
+ */
+export function consumePrewarmedSandbox(projectId: string): boolean {
+  if (!prewarmedSandbox) {
+    return false;
+  }
+  
+  // Transfer the pre-warmed sandbox to the active sandboxes map
+  sandboxes.set(projectId, {
+    sandbox: prewarmedSandbox.sandbox,
+    projectId,
+    url: prewarmedSandbox.url,
+    createdAt: prewarmedSandbox.createdAt,
+    expiresAt: prewarmedSandbox.expiresAt,
+  });
+  
+  logger.info('Using pre-warmed sandbox', { projectId, sandboxId: prewarmedSandbox.sandbox.sandboxId });
+  
+  prewarmedSandbox = null;
+  
+  // Start pre-warming another sandbox for the next request
+  prewarmSandbox().catch(err => logger.error('Failed to pre-warm next sandbox', err));
+  
+  return true;
+}
+
+/**
+ * Ensure Next.js scaffold exists for pre-warming (same as ensureNextJsScaffold but exported-friendly)
+ */
+async function ensureNextJsScaffoldForPrewarm(sandbox: Sandbox, projectId: string): Promise<void> {
+  async function ensureDir(path: string): Promise<void> {
+    const parts = path.split('/').filter(Boolean);
+    if (parts.length === 0) return;
+
+    let current = '';
+    for (const part of parts) {
+      current = current ? `${current}/${part}` : part;
+      try {
+        await sandbox.files.makeDir(current);
+      } catch (error) {
+        // Directory may already exist
+      }
+    }
+  }
+
+  async function ensureFile(path: string, content: string): Promise<void> {
+    const dir = path.split('/').slice(0, -1).join('/');
+    if (dir) {
+      await ensureDir(dir);
+    }
+    await sandbox.files.write(path, content);
+  }
+
+  await ensureFile(
+    'package.json',
+    JSON.stringify(
+      {
+        name: 'via-app',
+        version: '0.1.0',
+        private: true,
+        scripts: {
+          dev: 'next dev',
+          build: 'next build',
+          start: 'next start',
+          lint: 'next lint',
+        },
+        dependencies: {
+          next: '^15.0.0',
+          react: '^19.0.0',
+          'react-dom': '^19.0.0',
+        },
+        devDependencies: {
+          typescript: '^5.0.0',
+          '@types/node': '^20.0.0',
+          '@types/react': '^19.0.0',
+          '@types/react-dom': '^19.0.0',
+          tailwindcss: '^3.4.0',
+          postcss: '^8.4.0',
+          autoprefixer: '^10.4.0',
+        },
+      },
+      null,
+      2
+    ) + '\n'
+  );
+
+  await ensureFile(
+    'tsconfig.json',
+    JSON.stringify(
+      {
+        compilerOptions: {
+          target: 'ES2017',
+          lib: ['dom', 'dom.iterable', 'esnext'],
+          allowJs: true,
+          skipLibCheck: true,
+          strict: true,
+          noEmit: true,
+          esModuleInterop: true,
+          module: 'esnext',
+          moduleResolution: 'bundler',
+          resolveJsonModule: true,
+          isolatedModules: true,
+          jsx: 'preserve',
+          incremental: true,
+          plugins: [{ name: 'next' }],
+        },
+        include: ['next-env.d.ts', '**/*.ts', '**/*.tsx', '.next/types/**/*.ts'],
+        exclude: ['node_modules'],
+      },
+      null,
+      2
+    ) + '\n'
+  );
+
+  await ensureFile(
+    'next.config.ts',
+    `import type { NextConfig } from 'next';\n\nconst nextConfig: NextConfig = {};\n\nexport default nextConfig;\n`
+  );
+
+  await ensureFile(
+    'postcss.config.cjs',
+    `module.exports = {\n  plugins: {\n    tailwindcss: {},\n    autoprefixer: {},\n  },\n};\n`
+  );
+
+  await ensureFile(
+    'tailwind.config.ts',
+    `import type { Config } from 'tailwindcss';\n\nconst config: Config = {\n  content: [\n    './app/**/*.{js,ts,jsx,tsx,mdx}',\n    './components/**/*.{js,ts,jsx,tsx,mdx}',\n    './pages/**/*.{js,ts,jsx,tsx,mdx}',\n  ],\n  theme: { extend: {} },\n  plugins: [],\n};\n\nexport default config;\n`
+  );
+
+  await ensureFile('next-env.d.ts', `/// <reference types="next" />\n/// <reference types="next/image-types/global" />\n\n// NOTE: This file should not be edited.\n\n`);
+
+  await ensureFile('app/globals.css', `@tailwind base;\n@tailwind components;\n@tailwind utilities;\n`);
+
+  await ensureFile(
+    'app/layout.tsx',
+    `import type { Metadata } from 'next';\nimport './globals.css';\n\nexport const metadata: Metadata = {\n  title: 'Via Preview',\n  description: 'Live preview',\n};\n\nexport default function RootLayout({ children }: { children: React.ReactNode }) {\n  return (\n    <html lang="en">\n      <body>{children}</body>\n    </html>\n  );\n}\n`
+  );
+
+  // Create a placeholder page.tsx so npm install can complete
+  await ensureFile(
+    'app/page.tsx',
+    `export default function Page() {\n  return <div>Loading...</div>;\n}\n`
+  );
+
+  await ensureFile(
+    '.gitignore',
+    `# dependencies\n/node_modules\n\n# next\n/.next\n/out\n\n# misc\n.DS_Store\n\n# env\n.env\n.env*.local\n`
+  );
+}

@@ -660,7 +660,7 @@ struct DevelopmentView: View {
                     }
                     .buttonStyle(.borderedProminent)
 
-                    Button("Go to Chat") {
+                    Button("Go to Agent") {
                         withAnimation {
                             selectedTab = .chat
                         }
@@ -801,7 +801,7 @@ struct DevelopmentView: View {
             // Chat on LEFT
             tabBarItem(
                 icon: "bubble.left.and.bubble.right.fill",
-                title: "Chat",
+                title: "Agent",
                 tab: .chat
             )
 

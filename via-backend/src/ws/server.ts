@@ -9,6 +9,7 @@ import { Server } from 'http';
 import { logger } from '../utils/logger.js';
 import { handleMessage, AuthenticatedWebSocket } from './handlers.js';
 import { WebSocketMessage, createMessage } from './types.js';
+import { prewarmSandbox } from '../services/SandboxManager.js';
 
 // Store active connections by userId
 const connections = new Map<string, AuthenticatedWebSocket>();
@@ -57,6 +58,9 @@ export function initWebSocketServer(httpServer: Server): WebSocketServer {
         state: 'IDLE',
         message: 'Ready',
       })));
+      
+      // Pre-warm a sandbox in the background for faster first build
+      prewarmSandbox().catch(err => logger.error('Failed to pre-warm sandbox on connect', err));
 
     } catch (error) {
       logger.error('Authentication failed', error);
