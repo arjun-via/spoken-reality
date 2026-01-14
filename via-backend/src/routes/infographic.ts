@@ -10,8 +10,8 @@ import { logger } from '../utils/logger.js';
 
 const router = Router();
 
-// Get OpenRouter API key from environment
-const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || '';
+// Get Cerebras API key from environment
+const CEREBRAS_API_KEY = process.env.CEREBRAS_API_KEY || '';
 
 /**
  * POST /api/infographic/generate
@@ -39,17 +39,17 @@ router.post('/generate', async (req: Request, res: Response) => {
     }
     
     // Check API key
-    if (!OPENROUTER_API_KEY) {
-      logger.error('[Infographic] OPENROUTER_API_KEY not configured');
+    if (!CEREBRAS_API_KEY) {
+      logger.error('[Infographic] CEREBRAS_API_KEY not configured');
       return res.status(500).json({
-        error: 'Server configuration error: OpenRouter API key not set',
+        error: 'Server configuration error: Cerebras API key not set',
       });
     }
     
     logger.info(`[Infographic] Generate request for: ${repo_url}`);
     
     // Generate infographic
-    const result = await generateInfographic(repo_url, OPENROUTER_API_KEY, model);
+    const result = await generateInfographic(repo_url, CEREBRAS_API_KEY, model);
     
     const duration = Date.now() - startTime;
     logger.info(`[Infographic] Generation completed in ${duration}ms`);
@@ -83,7 +83,7 @@ router.get('/health', (req: Request, res: Response) => {
   res.json({
     status: 'ok',
     service: 'infographic',
-    api_key_configured: !!OPENROUTER_API_KEY,
+    api_key_configured: !!CEREBRAS_API_KEY,
   });
 });
 

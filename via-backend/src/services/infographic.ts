@@ -9,10 +9,9 @@
 
 import { logger } from '../utils/logger.js';
 
-// Configuration
-const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
-const DEFAULT_MODEL = 'moonshotai/kimi-k2-0905';
-const DEFAULT_PROVIDER = 'Groq';
+// Configuration - Using Cerebras directly
+const CEREBRAS_API_URL = 'https://api.cerebras.ai/v1/chat/completions';
+const DEFAULT_MODEL = 'zai-glm-4.7';
 
 // Phase colors for consistent styling
 const PHASE_COLORS: Record<string, { background: string; accent: string; icon: string }> = {
@@ -545,12 +544,12 @@ function calculateStatistics(data: InfographicData): Record<string, number> {
  */
 export async function generateInfographic(
   repoUrl: string,
-  openRouterApiKey: string,
+  cerebrasApiKey: string,
   model: string = DEFAULT_MODEL
 ): Promise<{ data: InfographicData; stats: Record<string, number> }> {
   logger.info(`[Infographic] Starting generation for: ${repoUrl}`);
-  logger.info(`[Infographic] Using model: ${model}`);
-  logger.info(`[Infographic] API key present: ${!!openRouterApiKey}, length: ${openRouterApiKey?.length || 0}`);
+  logger.info(`[Infographic] Using model: ${model} (Cerebras)`);
+  logger.info(`[Infographic] API key present: ${!!cerebrasApiKey}, length: ${cerebrasApiKey?.length || 0}`);
   
   // Validate URL
   if (!repoUrl.includes('github.com')) {
@@ -561,28 +560,22 @@ export async function generateInfographic(
   const prompt = buildAnalysisPrompt(repoUrl);
   logger.info(`[Infographic] Prompt built (${prompt.length} chars)`);
   
-  // Call OpenRouter
-  const response = await fetch(OPENROUTER_API_URL, {
+  // Call Cerebras directly
+  const response = await fetch(CEREBRAS_API_URL, {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${openRouterApiKey}`,
+      'Authorization': `Bearer ${cerebrasApiKey}`,
       'Content-Type': 'application/json',
-      'HTTP-Referer': 'https://github.com/infographic-viewer',
-      'X-Title': 'InfographicViewer',
     },
     body: JSON.stringify({
       model,
       messages: [{ role: 'user', content: prompt }],
       temperature: 0.1,
-      max_tokens: 32000,
-      response_format: { type: 'json_object' },
-      provider: {
-        order: [DEFAULT_PROVIDER],
-      },
+      max_tokens: 16000,
     }),
   });
   
-  logger.info(`[Infographic] OpenRouter HTTP status: ${response.status}`);
+  logger.info(`[Infographic] Cerebras HTTP status: ${response.status}`);
   
   if (response.status === 429) {
     throw new Error('Rate limited. Please wait a moment and try again.');
@@ -590,9 +583,9 @@ export async function generateInfographic(
   
   if (!response.ok) {
     const errorText = await response.text();
-    logger.error(`[Infographic] OpenRouter error (${response.status}): ${errorText}`);
+    logger.error(`[Infographic] Cerebras error (${response.status}): ${errorText}`);
     logger.error(`[Infographic] Request was for model: ${model}`);
-    throw new Error(`OpenRouter API error: ${response.status} - ${errorText.slice(0, 200)}`);
+    throw new Error(`Cerebras API error: ${response.status} - ${errorText.slice(0, 200)}`);
   }
   
   const result = await response.json() as {
