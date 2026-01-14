@@ -1,0 +1,250 @@
+{
+  "version": "2.0",
+  "schema": "interactive-infographic",
+  "repo_url": "https://github.com/httpie/cli",
+  "repo_name": "httpie-cli",
+  "repo_summary": "HTTPie is a modern, user-friendly command-line HTTP client for the API era, designed to make CLI interaction with web services as human-friendly as possible.",
+  "pipeline_overview": "The pipeline transforms raw CLI arguments into structured HTTP requests, executes them via a managed session, and processes the resulting stream for formatted terminal output.",
+  "generated_at": "2026-01-14T10:30:00Z",
+  "root": {
+    "id": "root",
+    "type": "repo",
+    "label": "HTTPie CLI",
+    "description": "Human-friendly command-line HTTP client for the API era",
+    "visual_hint": {
+      "icon": "terminal",
+      "color": "#4A90D9"
+    },
+    "children": [
+      {
+        "id": "phase-1",
+        "type": "phase",
+        "label": "1. Ingestion",
+        "description": "Capture and parse command-line arguments and environment configurations",
+        "visual_hint": {
+          "color": "#E8F4FD",
+          "icon": "arrow.down.doc"
+        },
+        "phase_metadata": {
+          "phase_id": "1",
+          "phase_purpose": "Capture and parse command-line arguments and environment configurations"
+        },
+        "children": [
+          {
+            "id": "step-1.1",
+            "type": "step",
+            "label": "CLI Entry",
+            "description": "Main entry point that triggers the core execution logic",
+            "visual_hint": {
+              "color": "#4A90D9",
+              "icon": "play.fill",
+              "badge": "Entry Point"
+            },
+            "step_metadata": {
+              "step_id": "1.1",
+              "source_nodes": ["User CLI Arguments"],
+              "target_nodes": ["sys.argv"],
+              "process_script": "httpie/__main__.py"
+            },
+            "connections": [
+              {
+                "target_id": "step-1.2",
+                "label": "passes arguments",
+                "direction": "outgoing"
+              }
+            ],
+            "children": [
+              {
+                "id": "file-main",
+                "type": "file",
+                "label": "__main__.py",
+                "description": "Entry point module for the httpie package",
+                "visual_hint": {
+                  "icon": "doc.text",
+                  "color": "#3776AB"
+                },
+                "file_metadata": {
+                  "file_path": "httpie/__main__.py",
+                  "language": "python",
+                  "github_url": "https://github.com/httpie/cli/blob/master/httpie/__main__.py",
+                  "line_count": 25
+                },
+                "children": [
+                  {
+                    "id": "func-main",
+                    "type": "function",
+                    "label": "main()",
+                    "description": "Main entry function that initializes and runs HTTPie",
+                    "visual_hint": {
+                      "icon": "function",
+                      "color": "#3776AB"
+                    },
+                    "function_metadata": {
+                      "function_name": "main",
+                      "file_path": "httpie/__main__.py",
+                      "line_start": 8,
+                      "line_end": 20,
+                      "github_url": "https://github.com/httpie/cli/blob/master/httpie/__main__.py#L8-L20",
+                      "signature": "def main() -> None:",
+                      "docstring": "The main entry point for HTTPie CLI."
+                    },
+                    "children": [
+                      {
+                        "id": "code-main",
+                        "type": "code_block",
+                        "label": "main() implementation",
+                        "description": "Core entry point code",
+                        "visual_hint": {
+                          "icon": "chevron.left.forwardslash.chevron.right"
+                        },
+                        "code_metadata": {
+                          "code": "def main() -> None:\n    \"\"\"The main entry point for HTTPie CLI.\"\"\"\n    from httpie.core import main as core_main\n    try:\n        exit_status = core_main()\n        sys.exit(exit_status.value)\n    except KeyboardInterrupt:\n        sys.exit(ExitStatus.ERROR_CTRL_C.value)\n    except Exception as e:\n        sys.stderr.write(str(e) + '\\n')\n        sys.exit(ExitStatus.ERROR.value)",
+                          "language": "python",
+                          "file_path": "httpie/__main__.py",
+                          "line_start": 8,
+                          "line_end": 20,
+                          "github_url": "https://github.com/httpie/cli/blob/master/httpie/__main__.py#L8-L20",
+                          "annotations": [
+                            {
+                              "line": 3,
+                              "comment": "Lazy import to speed up CLI startup time"
+                            },
+                            {
+                              "line": 5,
+                              "comment": "Calls the core HTTPie logic and gets exit status"
+                            },
+                            {
+                              "line": 7,
+                              "comment": "Handles Ctrl+C gracefully"
+                            }
+                          ]
+                        },
+                        "children": []
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "step-1.2",
+            "type": "step",
+            "label": "Argument Parsing",
+            "description": "Parses raw arguments into a structured Namespace using argparse",
+            "visual_hint": {
+              "color": "#4A90D9",
+              "icon": "list.bullet.rectangle"
+            },
+            "step_metadata": {
+              "step_id": "1.2",
+              "source_nodes": ["sys.argv", "Environment Variables"],
+              "target_nodes": ["Namespace Object"],
+              "process_script": "httpie/cli/definition.py",
+              "notes": "Handles complex HTTP-specific syntax like key==value or key:=json"
+            },
+            "connections": [
+              {
+                "target_id": "step-2.1",
+                "label": "provides namespace",
+                "direction": "outgoing"
+              }
+            ],
+            "children": [
+              {
+                "id": "file-definition",
+                "type": "file",
+                "label": "definition.py",
+                "description": "CLI argument definitions and parser configuration",
+                "visual_hint": {
+                  "icon": "doc.text",
+                  "color": "#3776AB"
+                },
+                "file_metadata": {
+                  "file_path": "httpie/cli/definition.py",
+                  "language": "python",
+                  "github_url": "https://github.com/httpie/cli/blob/master/httpie/cli/definition.py",
+                  "line_count": 450
+                },
+                "children": [
+                  {
+                    "id": "func-parser",
+                    "type": "function",
+                    "label": "get_parser()",
+                    "description": "Creates and configures the argument parser",
+                    "visual_hint": {
+                      "icon": "function",
+                      "color": "#3776AB"
+                    },
+                    "function_metadata": {
+                      "function_name": "get_parser",
+                      "file_path": "httpie/cli/definition.py",
+                      "line_start": 50,
+                      "line_end": 120,
+                      "github_url": "https://github.com/httpie/cli/blob/master/httpie/cli/definition.py#L50-L120",
+                      "signature": "def get_parser() -> argparse.ArgumentParser:",
+                      "docstring": "Create and return the HTTPie argument parser."
+                    },
+                    "children": [
+                      {
+                        "id": "code-parser",
+                        "type": "code_block",
+                        "label": "get_parser() implementation",
+                        "description": "Argument parser setup code",
+                        "visual_hint": {
+                          "icon": "chevron.left.forwardslash.chevron.right"
+                        },
+                        "code_metadata": {
+                          "code": "def get_parser() -> argparse.ArgumentParser:\n    \"\"\"Create and return the HTTPie argument parser.\"\"\"\n    parser = HTTPieArgumentParser(\n        prog='http',\n        description='HTTPie - a CLI HTTP client',\n        formatter_class=HTTPieHelpFormatter\n    )\n    \n    # Add positional arguments\n    parser.add_argument('method', nargs='?', default='GET')\n    parser.add_argument('url')\n    parser.add_argument('items', nargs='*')\n    \n    # Add optional arguments\n    parser.add_argument('--json', '-j', action='store_true')\n    parser.add_argument('--form', '-f', action='store_true')\n    # ... more arguments ...\n    \n    return parser",
+                          "language": "python",
+                          "file_path": "httpie/cli/definition.py",
+                          "line_start": 50,
+                          "line_end": 120,
+                          "github_url": "https://github.com/httpie/cli/blob/master/httpie/cli/definition.py#L50-L120"
+                        },
+                        "children": []
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "phase-2",
+        "type": "phase",
+        "label": "2. Cleaning & Normalization",
+        "description": "Validate input arguments and initialize the execution environment",
+        "visual_hint": {
+          "color": "#FFF3E0",
+          "icon": "wand.and.stars"
+        },
+        "phase_metadata": {
+          "phase_id": "2",
+          "phase_purpose": "Validate input arguments and initialize the execution environment"
+        },
+        "children": [
+          {
+            "id": "step-2.1",
+            "type": "step",
+            "label": "Config Loading",
+            "description": "Loads user preferences and default settings from disk",
+            "visual_hint": {
+              "color": "#FF9800",
+              "icon": "gearshape"
+            },
+            "step_metadata": {
+              "step_id": "2.1",
+              "source_nodes": ["~/.config/httpie/config.json"],
+              "target_nodes": ["Config Object"],
+              "process_script": "httpie/config.py"
+            },
+            "children": []
+          }
+        ]
+      }
+    ]
+  }
+}

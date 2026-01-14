@@ -1,0 +1,249 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "interactive-infographic-v2.0",
+  "title": "Interactive Infographic Schema",
+  "description": "Hierarchical JSON schema for iOS drill-down infographic with embedded code",
+  "type": "object",
+  "required": ["version", "schema", "repo_url", "repo_name", "repo_summary", "generated_at", "root"],
+  "properties": {
+    "version": {
+      "type": "string",
+      "const": "2.0",
+      "description": "Schema version"
+    },
+    "schema": {
+      "type": "string",
+      "const": "interactive-infographic",
+      "description": "Schema identifier"
+    },
+    "repo_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "Full GitHub repository URL"
+    },
+    "repo_name": {
+      "type": "string",
+      "description": "Short repository name"
+    },
+    "repo_summary": {
+      "type": "string",
+      "description": "1-3 sentence description of what the repository does"
+    },
+    "pipeline_overview": {
+      "type": "string",
+      "description": "1-2 sentence summary of the data pipeline"
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp of generation"
+    },
+    "root": {
+      "$ref": "#/definitions/node",
+      "description": "Root node of the hierarchical tree"
+    }
+  },
+  "definitions": {
+    "node": {
+      "type": "object",
+      "required": ["id", "type", "label", "children"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for navigation (e.g., 'phase-1', 'step-1.1', 'func-main')"
+        },
+        "type": {
+          "type": "string",
+          "enum": ["repo", "phase", "step", "file", "function", "code_block"],
+          "description": "Node type determines rendering style"
+        },
+        "label": {
+          "type": "string",
+          "description": "Display name shown in the UI"
+        },
+        "description": {
+          "type": "string",
+          "description": "Short explanation (5-15 words)"
+        },
+        "children": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/node"
+          },
+          "description": "Child nodes (empty array for leaf nodes)"
+        },
+        "visual_hint": {
+          "type": "object",
+          "description": "Styling hints for iOS app",
+          "properties": {
+            "color": {
+              "type": "string",
+              "description": "Hex color code (e.g., '#4A90D9')"
+            },
+            "icon": {
+              "type": "string",
+              "description": "SF Symbol name or icon identifier"
+            },
+            "badge": {
+              "type": "string",
+              "description": "Optional badge text (e.g., 'Entry Point', 'External API')"
+            }
+          }
+        },
+        "phase_metadata": {
+          "type": "object",
+          "description": "Additional metadata for phase nodes",
+          "properties": {
+            "phase_id": {
+              "type": "string"
+            },
+            "phase_purpose": {
+              "type": "string"
+            }
+          }
+        },
+        "step_metadata": {
+          "type": "object",
+          "description": "Additional metadata for step nodes",
+          "properties": {
+            "step_id": {
+              "type": "string"
+            },
+            "source_nodes": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Input data sources"
+            },
+            "target_nodes": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Output data targets"
+            },
+            "process_script": {
+              "type": "string",
+              "description": "Main script/module for this step"
+            },
+            "notes": {
+              "type": "string",
+              "description": "Important nuances or decision logic"
+            }
+          }
+        },
+        "file_metadata": {
+          "type": "object",
+          "description": "Additional metadata for file nodes",
+          "properties": {
+            "file_path": {
+              "type": "string",
+              "description": "Relative path from repo root"
+            },
+            "language": {
+              "type": "string",
+              "description": "Programming language (python, javascript, etc.)"
+            },
+            "github_url": {
+              "type": "string",
+              "format": "uri",
+              "description": "Direct link to file on GitHub"
+            },
+            "line_count": {
+              "type": "integer",
+              "description": "Total lines in file"
+            }
+          }
+        },
+        "function_metadata": {
+          "type": "object",
+          "description": "Additional metadata for function nodes",
+          "properties": {
+            "function_name": {
+              "type": "string"
+            },
+            "file_path": {
+              "type": "string"
+            },
+            "line_start": {
+              "type": "integer"
+            },
+            "line_end": {
+              "type": "integer"
+            },
+            "github_url": {
+              "type": "string",
+              "format": "uri",
+              "description": "Direct link with line numbers"
+            },
+            "signature": {
+              "type": "string",
+              "description": "Function signature"
+            },
+            "docstring": {
+              "type": "string",
+              "description": "Function docstring if available"
+            }
+          }
+        },
+        "code_metadata": {
+          "type": "object",
+          "description": "Additional metadata for code_block nodes (leaf nodes)",
+          "properties": {
+            "code": {
+              "type": "string",
+              "description": "Actual source code"
+            },
+            "language": {
+              "type": "string",
+              "description": "Programming language for syntax highlighting"
+            },
+            "file_path": {
+              "type": "string"
+            },
+            "line_start": {
+              "type": "integer"
+            },
+            "line_end": {
+              "type": "integer"
+            },
+            "github_url": {
+              "type": "string",
+              "format": "uri"
+            },
+            "annotations": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "line": { "type": "integer" },
+                  "comment": { "type": "string" }
+                }
+              },
+              "description": "AI-generated annotations for specific lines"
+            }
+          }
+        },
+        "connections": {
+          "type": "array",
+          "description": "Data flow connections to other nodes",
+          "items": {
+            "type": "object",
+            "properties": {
+              "target_id": {
+                "type": "string",
+                "description": "ID of the connected node"
+              },
+              "label": {
+                "type": "string",
+                "description": "Connection label (e.g., 'returns', 'calls', 'writes to')"
+              },
+              "direction": {
+                "type": "string",
+                "enum": ["outgoing", "incoming"],
+                "description": "Direction of data flow"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
