@@ -46,6 +46,9 @@ export const env = {
   // xAI (Grok - optional, for TTS if needed)
   XAI_API_KEY: optionalEnv('XAI_API_KEY', ''),
 
+  // OpenRouter (for infographic generation)
+  OPENROUTER_API_KEY: optionalEnv('OPENROUTER_API_KEY', ''),
+
   // Computed
   isDev: optionalEnv('NODE_ENV', 'development') === 'development',
   isProd: optionalEnv('NODE_ENV', 'development') === 'production',

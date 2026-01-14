@@ -16,6 +16,7 @@ import { env } from './config/env.js';
 import { logger } from './utils/logger.js';
 import { initWebSocketServer } from './ws/server.js';
 import healthRouter from './routes/health.js';
+import infographicRouter from './routes/infographic.js';
 
 // Create Express app
 const app = express();
@@ -29,6 +30,7 @@ app.use(express.json());
 
 // Routes
 app.use('/api', healthRouter);
+app.use('/api/infographic', infographicRouter);
 
 // Root route
 app.get('/', (req, res) => {
