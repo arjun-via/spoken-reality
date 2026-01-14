@@ -340,6 +340,51 @@ function sanitizeJsonString(raw: string): string {
 }
 
 /**
+ * Attempt to repair common JSON issues from LLM output
+ */
+function repairJson(raw: string): string {
+  let text = raw;
+  
+  // First, sanitize control characters in strings
+  text = sanitizeJsonString(text);
+  
+  // Try to parse - if it works, we're done
+  try {
+    JSON.parse(text);
+    return text;
+  } catch (e) {
+    // Continue with repairs
+  }
+  
+  // Fix trailing commas in arrays and objects
+  text = text.replace(/,\s*([}\]])/g, '$1');
+  
+  // Fix missing commas between array elements (common LLM mistake)
+  // Look for patterns like: } { or ] [ or " " (without comma)
+  text = text.replace(/}\s*{/g, '},{');
+  text = text.replace(/]\s*\[/g, '],[');
+  text = text.replace(/"\s*"/g, '","');
+  text = text.replace(/}\s*"/g, '},"');
+  text = text.replace(/"\s*{/g, '",{');
+  text = text.replace(/]\s*"/g, '],"');
+  text = text.replace(/"\s*\[/g, '",[');
+  text = text.replace(/}\s*\[/g, '},[');
+  text = text.replace(/]\s*{/g, '],{');
+  
+  // Fix numbers followed by strings without comma
+  text = text.replace(/(\d)\s*"/g, '$1,"');
+  text = text.replace(/(\d)\s*{/g, '$1,{');
+  text = text.replace(/(\d)\s*\[/g, '$1,[');
+  
+  // Fix true/false/null followed by other values without comma
+  text = text.replace(/(true|false|null)\s*"/g, '$1,"');
+  text = text.replace(/(true|false|null)\s*{/g, '$1,{');
+  text = text.replace(/(true|false|null)\s*\[/g, '$1,[');
+  
+  return text;
+}
+
+/**
  * Infer node type based on depth
  */
 function inferNodeType(depth: number): string {
@@ -563,18 +608,19 @@ export async function generateInfographic(
   let jsonString = extractJsonFromResponse(rawContent);
   logger.info(`[Infographic] Extracted JSON candidate (${jsonString.length} chars)`);
   
-  // Try to parse, with sanitization fallback
+  // Try to parse, with repair fallback
   let parsed: InfographicData;
   try {
     parsed = JSON.parse(jsonString);
   } catch (e1) {
-    logger.warn(`[Infographic] Initial parse failed, attempting sanitization...`);
+    logger.warn(`[Infographic] Initial parse failed: ${(e1 as Error).message}`);
+    logger.warn(`[Infographic] Attempting JSON repair...`);
     try {
-      const sanitized = sanitizeJsonString(jsonString);
-      parsed = JSON.parse(sanitized);
-      logger.info(`[Infographic] Sanitized JSON parsed successfully`);
+      const repaired = repairJson(jsonString);
+      parsed = JSON.parse(repaired);
+      logger.info(`[Infographic] Repaired JSON parsed successfully`);
     } catch (e2) {
-      logger.error(`[Infographic] JSON parse failed after sanitization`);
+      logger.error(`[Infographic] JSON parse failed after repair`);
       logger.error(`[Infographic] First 500 chars: ${jsonString.slice(0, 500)}`);
       logger.error(`[Infographic] Last 500 chars: ${jsonString.slice(-500)}`);
       throw new Error(`Failed to parse JSON from model response: ${(e2 as Error).message}`);
