@@ -12,6 +12,7 @@ import { logger } from '../utils/logger.js';
 // Configuration
 const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const DEFAULT_MODEL = 'moonshotai/kimi-k2-0905';
+const DEFAULT_PROVIDER = 'Groq';
 
 // Phase colors for consistent styling
 const PHASE_COLORS: Record<string, { background: string; accent: string; icon: string }> = {
@@ -574,6 +575,9 @@ export async function generateInfographic(
       messages: [{ role: 'user', content: prompt }],
       temperature: 0.2,
       max_tokens: 32000,
+      provider: {
+        order: [DEFAULT_PROVIDER],
+      },
     }),
   });
   
