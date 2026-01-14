@@ -6,9 +6,9 @@ enum DevelopmentTab {
 }
 
 enum VerticalScreen {
-    case code    // Swipe UP to show
-    case main    // Center (Output/Chat)
-    case git     // Swipe DOWN to show
+    case code        // Swipe UP to show
+    case main        // Center (Output/Chat)
+    case infographic // Swipe DOWN to show (was git)
 }
 
 // Model for conversation messages
@@ -60,8 +60,8 @@ struct DevelopmentView: View {
                     mainContentWithObservers
                         .frame(height: geometry.size.height)
 
-                    // Git Status screen (below main) - shows when swiping DOWN
-                    GitStatusView()
+                    // Infographic screen (below main) - shows when swiping DOWN
+                    InfographicBrowserView()
                         .frame(height: geometry.size.height)
                 }
                 .offset(y: verticalNavigationOffset(for: geometry.size.height))
@@ -112,8 +112,8 @@ struct DevelopmentView: View {
             baseOffset = 0  // Show code (top screen)
         case .main:
             baseOffset = -screenHeight  // Show main (middle screen)
-        case .git:
-            baseOffset = -screenHeight * 2  // Show git (bottom screen)
+        case .infographic:
+            baseOffset = -screenHeight * 2  // Show infographic (bottom screen)
         }
         return baseOffset + verticalOffset
     }
@@ -142,7 +142,7 @@ struct DevelopmentView: View {
                     }
                 case .main:
                     verticalOffset = translation * 0.6
-                case .git:
+                case .infographic:
                     if translation < 0 {
                         verticalOffset = translation * 0.6
                     } else {
@@ -170,14 +170,14 @@ struct DevelopmentView: View {
                         switch verticalScreen {
                         case .code: break
                         case .main: verticalScreen = .code
-                        case .git: verticalScreen = .main
+                        case .infographic: verticalScreen = .main
                         }
                     } else if value.translation.height > threshold || velocity > 500 {
                         // Swiped DOWN
                         switch verticalScreen {
                         case .code: verticalScreen = .main
-                        case .main: verticalScreen = .git
-                        case .git: break
+                        case .main: verticalScreen = .infographic
+                        case .infographic: break
                         }
                     }
                     verticalOffset = 0
@@ -194,7 +194,7 @@ struct DevelopmentView: View {
             Spacer()
 
             // Swipe down indicator
-            swipeIndicator(direction: .down, label: "Git")
+            swipeIndicator(direction: .down, label: "Infographic")
                 .padding(.bottom, 100)
         }
         .allowsHitTesting(false)
@@ -475,18 +475,18 @@ struct DevelopmentView: View {
                 HStack(spacing: 12) {
                     connectionStatusIndicator
 
-                    // Navigation to Git (down)
+                    // Navigation to Infographic (down)
                     Button(action: {
                         withAnimation(.interactiveSpring(response: 0.4, dampingFraction: 0.8)) {
-                            verticalScreen = .git
+                            verticalScreen = .infographic
                         }
                     }) {
                         HStack(spacing: 4) {
                             Image(systemName: "chevron.down")
-                            Text("Git")
+                            Text("Info")
                         }
                         .font(.subheadline)
-                        .foregroundColor(.green)
+                        .foregroundColor(.purple)
                     }
 
                     // Navigation to Code (up)
