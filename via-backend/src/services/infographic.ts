@@ -573,8 +573,9 @@ export async function generateInfographic(
     body: JSON.stringify({
       model,
       messages: [{ role: 'user', content: prompt }],
-      temperature: 0.2,
+      temperature: 0.1,
       max_tokens: 32000,
+      response_format: { type: 'json_object' },
       provider: {
         order: [DEFAULT_PROVIDER],
       },
