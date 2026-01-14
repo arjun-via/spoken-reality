@@ -573,6 +573,7 @@ export async function generateInfographic(
       messages: [{ role: 'user', content: prompt }],
       temperature: 0.2,
       max_tokens: 32000,
+      response_format: { type: 'json_object' },
     }),
   });
   
