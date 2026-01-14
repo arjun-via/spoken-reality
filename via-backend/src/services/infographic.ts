@@ -549,6 +549,7 @@ export async function generateInfographic(
 ): Promise<{ data: InfographicData; stats: Record<string, number> }> {
   logger.info(`[Infographic] Starting generation for: ${repoUrl}`);
   logger.info(`[Infographic] Using model: ${model}`);
+  logger.info(`[Infographic] API key present: ${!!openRouterApiKey}, length: ${openRouterApiKey?.length || 0}`);
   
   // Validate URL
   if (!repoUrl.includes('github.com')) {
@@ -584,8 +585,9 @@ export async function generateInfographic(
   
   if (!response.ok) {
     const errorText = await response.text();
-    logger.error(`[Infographic] OpenRouter error: ${errorText}`);
-    throw new Error(`OpenRouter API error: ${response.status}`);
+    logger.error(`[Infographic] OpenRouter error (${response.status}): ${errorText}`);
+    logger.error(`[Infographic] Request was for model: ${model}`);
+    throw new Error(`OpenRouter API error: ${response.status} - ${errorText.slice(0, 200)}`);
   }
   
   const result = await response.json() as {
