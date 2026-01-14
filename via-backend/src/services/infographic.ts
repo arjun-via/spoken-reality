@@ -11,7 +11,8 @@ import { logger } from '../utils/logger.js';
 
 // Configuration
 const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
-const DEFAULT_MODEL = 'anthropic/claude-opus-4.5';
+const DEFAULT_MODEL = 'z-ai/glm-4.6';
+const DEFAULT_PROVIDER = 'Cerebras';
 
 // Phase colors for consistent styling
 const PHASE_COLORS: Record<string, { background: string; accent: string; icon: string }> = {
@@ -572,7 +573,12 @@ export async function generateInfographic(
       model,
       messages: [{ role: 'user', content: prompt }],
       temperature: 0.2,
-      max_tokens: 32000,
+      max_tokens: 16000,
+      include_reasoning: false,
+      provider: {
+        only: [DEFAULT_PROVIDER],
+        allow_fallbacks: false,
+      },
     }),
   });
   
