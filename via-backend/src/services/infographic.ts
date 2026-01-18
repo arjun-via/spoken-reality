@@ -194,6 +194,19 @@ async function fetchRepoTree(owner: string, repo: string): Promise<GitHubTreeIte
     });
     
     if (!masterResponse.ok) {
+      // Check if repo exists at all (to distinguish private vs non-existent)
+      const repoCheckUrl = `${GITHUB_API_BASE}/repos/${owner}/${repo}`;
+      const repoCheckResponse = await fetch(repoCheckUrl, {
+        headers: {
+          'Accept': 'application/vnd.github.v3+json',
+          'User-Agent': 'InfographicViewer/1.0',
+        },
+      });
+      
+      if (repoCheckResponse.status === 404) {
+        throw new Error(`PRIVATE_OR_NOT_FOUND: The repository "${owner}/${repo}" is either private or does not exist. Only public repositories are supported.`);
+      }
+      
       throw new Error(`GitHub API error: ${response.status} - Could not fetch repository tree`);
     }
     
@@ -867,7 +880,13 @@ export async function generateInfographic(
     fileList = repoData.fileList;
     logger.info(`[Infographic] Successfully fetched ${files.length} files (${fileList.length} total in repo)`);
   } catch (error) {
-    logger.warn(`[Infographic] Failed to fetch repo files: ${(error as Error).message}`);
+    const errorMessage = (error as Error).message;
+    // Check if this is a private repo error - don't proceed, throw to user
+    if (errorMessage.includes('PRIVATE_OR_NOT_FOUND')) {
+      logger.error(`[Infographic] Repository is private or not found`);
+      throw new Error('This repository is private or does not exist. Only public GitHub repositories are supported.');
+    }
+    logger.warn(`[Infographic] Failed to fetch repo files: ${errorMessage}`);
     logger.warn(`[Infographic] Proceeding without file contents (LLM will attempt to fetch)`);
   }
   
