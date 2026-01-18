@@ -47,9 +47,10 @@ Spoken Reality is a revolutionary coding platform that prioritizes voice interac
 
 ### Key Technologies
 - **Voice**: Grok Voice API (planned)
-- **AI**: Anthropic Claude (Claude Agent SDK)
+- **AI**: Anthropic Claude (Claude Agent SDK), Cerebras (Infographics)
 - **Sandboxes**: E2B Code Interpreter
 - **Generated Apps**: Next.js 15 + React 19 + Tailwind CSS
+- **Infographics**: Interactive repository visualization
 - **Deployment**: Railway for backend, TestFlight for iOS
 
 ## Getting Started

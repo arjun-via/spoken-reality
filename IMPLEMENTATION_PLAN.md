@@ -4,6 +4,8 @@
 **Last Updated:** 2025-12-30
 **Timeline:** Estimated 12-16 weeks to MVP
 
+**⚠️ Note:** This plan is historical. See `PROJECT_STATUS.md` for current implementation status as of January 2026. The core features have been implemented and the app is in beta testing.
+
 ---
 
 ## Overview

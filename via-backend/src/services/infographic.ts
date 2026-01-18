@@ -458,10 +458,32 @@ function enhanceNode(node: InfographicNode, repoUrl: string, depth: number = 0):
     node.visual_hint = getDefaultVisualHint(node.type, node.label);
   }
   
-  // Enhance GitHub URLs for code nodes
+  // ALWAYS regenerate GitHub URLs to ensure correctness (LLM often gets them wrong)
+  // For file nodes
+  if (node.type === 'file' && node.file_metadata) {
+    const meta = node.file_metadata as Record<string, unknown>;
+    if (meta.file_path) {
+      meta.github_url = generateGithubUrl(repoUrl, meta.file_path as string);
+    }
+  }
+  
+  // For function nodes
+  if (node.type === 'function' && node.function_metadata) {
+    const meta = node.function_metadata as Record<string, unknown>;
+    if (meta.file_path) {
+      meta.github_url = generateGithubUrl(
+        repoUrl,
+        meta.file_path as string,
+        meta.line_start as number | undefined,
+        meta.line_end as number | undefined
+      );
+    }
+  }
+  
+  // For code_block nodes
   if (node.type === 'code_block' && node.code_metadata) {
     const meta = node.code_metadata as Record<string, unknown>;
-    if (!meta.github_url && meta.file_path) {
+    if (meta.file_path) {
       meta.github_url = generateGithubUrl(
         repoUrl,
         meta.file_path as string,

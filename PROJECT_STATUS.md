@@ -19,6 +19,7 @@ The Spoken Reality iOS app and backend infrastructure are fully functional and d
   - ✅ Real-time WebSocket communication
   - ✅ Live Next.js preview via WKWebView
   - ✅ Code inspection with syntax highlighting
+  - ✅ Interactive repository infographics
   - ✅ Git status view
   - ✅ Database browser UI
   - ✅ Settings & onboarding flow
@@ -40,6 +41,7 @@ The Spoken Reality iOS app and backend infrastructure are fully functional and d
   - ✅ Next.js + React + Tailwind code generation
   - ✅ Auto-retry with error handling
   - ✅ Health check endpoint
+  - ✅ Infographic generation service (Cerebras API)
 
 ### Infrastructure
 - **Deployment:** ✅ Auto-deploy from GitHub main branch to Railway
@@ -134,6 +136,10 @@ SpokenReality/
 ### Git Integration
 - UI exists but backend implementation is incomplete
 - "Commit & Push" button shows success message but doesn't actually push to GitHub
+
+### Infographics
+- Backend service implemented with Cerebras API
+- Requires CEREBRAS_API_KEY environment variable to be set
 
 ### Database
 - UI browser exists but backend integration not yet implemented

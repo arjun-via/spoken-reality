@@ -45,6 +45,7 @@ Backend service for Via — a voice-first app builder.
 
 5. **Test the server:**
    - Health check: http://localhost:3000/api/health
+   - Infographic health: http://localhost:3000/api/infographic/health
    - WebSocket: ws://localhost:3000/ws?token=test
 
 ## Project Structure
@@ -117,6 +118,53 @@ Connect to `ws://localhost:3000/ws?token={auth_token}`
 | `code.updated` | Files updated |
 | `error` | Error occurred |
 
+## REST API
+
+### Infographic Generation
+
+**POST** `/api/infographic/generate`
+
+Generate an interactive infographic from a GitHub repository.
+
+**Request:**
+```json
+{
+  "repo_url": "https://github.com/owner/repo",
+  "model": "zai-glm-4.7"  // optional, defaults to Cerebras GLM 4.7
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "duration_ms": 45678,
+  "data": {
+    "version": "2.0",
+    "schema": "interactive-infographic",
+    "repo_url": "https://github.com/owner/repo",
+    "repo_name": "repo",
+    "repo_summary": "Brief description",
+    "pipeline_overview": "What this repo does",
+    "generated_at": "2026-01-14T00:00:00Z",
+    "root": { /* hierarchical JSON */ }
+  },
+  "stats": {
+    "total_nodes": 45,
+    "phases": 3,
+    "steps": 8,
+    "files": 12,
+    "functions": 23,
+    "code_blocks": 15,
+    "max_depth": 5,
+    "total_code_lines": 234
+  }
+}
+```
+
+**Health Check:**
+- **GET** `/api/infographic/health` - Check if Cerebras API key is configured
+
 ## Deployment to Railway
 
 1. Push code to GitHub
@@ -132,6 +180,7 @@ Environment variables needed in Railway:
 - `E2B_API_KEY`
 - `XAI_API_KEY`
 - `ANTHROPIC_API_KEY`
+- `CEREBRAS_API_KEY` (for infographic generation)
 - `DATABASE_URL` (auto-provided by Railway PostgreSQL)
 
 ## Tech Stack

@@ -83,6 +83,27 @@ A mobile app where engineers speak their intentions, watch production-quality ap
 - Dev server → WebView with HMR (hot module replacement)
 - WebView always interactive, updates stream in real-time
 
+### Infographic Architecture
+
+**Purpose:** Generate interactive repository visualizations for exploration
+
+```
+[iOS App]
+    ↓ (GitHub URL)
+[Backend /api/infographic/generate]
+    ↓ (Cerebras API call)
+[Cerebras GLM 4.7]
+    ↓ (analysis + JSON)
+[iOS App - Interactive View]
+```
+
+**Components:**
+- **Input:** GitHub repository URL
+- **AI Model:** Cerebras GLM 4.7 (fast, cost-effective)
+- **Output:** Hierarchical JSON for iOS drill-down navigation
+- **Features:** Pinch-to-zoom, search, code annotations, GitHub links
+- **Cost:** ~$0.10 per repository analysis
+
 ### Infrastructure
 
 #### Code Generation
