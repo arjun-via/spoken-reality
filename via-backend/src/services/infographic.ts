@@ -2,9 +2,12 @@
  * Infographic Generation Service
  * 
  * Generates interactive hierarchical JSON from GitHub repositories
- * using Claude Opus 4.5 via OpenRouter.
+ * using GLM-4.7 via Cerebras.
  * 
- * This is a TypeScript port of the repo2interactive.py logic.
+ * This service:
+ * 1. Fetches actual file contents from GitHub API
+ * 2. Passes real code to the LLM for analysis
+ * 3. Generates hierarchical infographic JSON with correct file paths
  */
 
 import { logger } from '../utils/logger.js';
@@ -12,6 +15,27 @@ import { logger } from '../utils/logger.js';
 // Configuration - Using Cerebras directly
 const CEREBRAS_API_URL = 'https://api.cerebras.ai/v1/chat/completions';
 const DEFAULT_MODEL = 'zai-glm-4.7';
+const GITHUB_API_BASE = 'https://api.github.com';
+
+// File extensions to include in analysis
+const SOURCE_EXTENSIONS = [
+  '.py', '.js', '.ts', '.tsx', '.jsx', '.swift', '.kt', '.java',
+  '.go', '.rs', '.rb', '.php', '.c', '.cpp', '.h', '.hpp',
+  '.cs', '.scala', '.clj', '.ex', '.exs', '.vue', '.svelte'
+];
+
+// Files to skip
+const SKIP_PATTERNS = [
+  'node_modules', '__pycache__', '.git', 'dist', 'build',
+  'venv', '.env', 'package-lock.json', 'yarn.lock',
+  '.min.js', '.bundle.js', 'test', 'tests', 'spec', '__tests__'
+];
+
+// Max file size to fetch (100KB)
+const MAX_FILE_SIZE = 100 * 1024;
+
+// Max total content to send to LLM (chars)
+const MAX_TOTAL_CONTENT = 50000;
 
 // Phase colors for consistent styling
 const PHASE_COLORS: Record<string, { background: string; accent: string; icon: string }> = {
@@ -54,28 +78,281 @@ interface InfographicData {
   root: InfographicNode;
 }
 
+// GitHub API types
+interface GitHubTreeItem {
+  path: string;
+  mode: string;
+  type: 'blob' | 'tree';
+  sha: string;
+  size?: number;
+  url: string;
+}
+
+interface GitHubTree {
+  sha: string;
+  url: string;
+  tree: GitHubTreeItem[];
+  truncated: boolean;
+}
+
+interface GitHubContent {
+  name: string;
+  path: string;
+  sha: string;
+  size: number;
+  content?: string;
+  encoding?: string;
+}
+
+interface RepoFile {
+  path: string;
+  content: string;
+  size: number;
+  language: string;
+}
+
 /**
- * Build the analysis prompt for the LLM
+ * Parse owner and repo from GitHub URL
  */
-function buildAnalysisPrompt(repoUrl: string): string {
+function parseGitHubUrl(url: string): { owner: string; repo: string } | null {
+  const match = url.match(/github\.com\/([^\/]+)\/([^\/]+)/);
+  if (!match) return null;
+  return { owner: match[1], repo: match[2].replace(/\.git$/, '') };
+}
+
+/**
+ * Detect language from file extension
+ */
+function detectLanguage(path: string): string {
+  const ext = path.substring(path.lastIndexOf('.')).toLowerCase();
+  const langMap: Record<string, string> = {
+    '.py': 'python',
+    '.js': 'javascript',
+    '.ts': 'typescript',
+    '.tsx': 'typescript',
+    '.jsx': 'javascript',
+    '.swift': 'swift',
+    '.kt': 'kotlin',
+    '.java': 'java',
+    '.go': 'go',
+    '.rs': 'rust',
+    '.rb': 'ruby',
+    '.php': 'php',
+    '.c': 'c',
+    '.cpp': 'cpp',
+    '.h': 'c',
+    '.hpp': 'cpp',
+    '.cs': 'csharp',
+    '.scala': 'scala',
+    '.vue': 'vue',
+    '.svelte': 'svelte',
+  };
+  return langMap[ext] || 'text';
+}
+
+/**
+ * Check if a file should be included in analysis
+ */
+function shouldIncludeFile(path: string, size?: number): boolean {
+  // Check extension
+  const hasSourceExt = SOURCE_EXTENSIONS.some(ext => path.toLowerCase().endsWith(ext));
+  if (!hasSourceExt) return false;
+  
+  // Check skip patterns
+  const shouldSkip = SKIP_PATTERNS.some(pattern => path.toLowerCase().includes(pattern.toLowerCase()));
+  if (shouldSkip) return false;
+  
+  // Check size
+  if (size && size > MAX_FILE_SIZE) return false;
+  
+  return true;
+}
+
+/**
+ * Fetch repository file tree from GitHub API
+ */
+async function fetchRepoTree(owner: string, repo: string): Promise<GitHubTreeItem[]> {
+  const url = `${GITHUB_API_BASE}/repos/${owner}/${repo}/git/trees/main?recursive=1`;
+  logger.info(`[GitHub] Fetching tree: ${url}`);
+  
+  const response = await fetch(url, {
+    headers: {
+      'Accept': 'application/vnd.github.v3+json',
+      'User-Agent': 'InfographicViewer/1.0',
+    },
+  });
+  
+  if (!response.ok) {
+    // Try 'master' branch if 'main' fails
+    const masterUrl = `${GITHUB_API_BASE}/repos/${owner}/${repo}/git/trees/master?recursive=1`;
+    logger.info(`[GitHub] main branch failed, trying master: ${masterUrl}`);
+    const masterResponse = await fetch(masterUrl, {
+      headers: {
+        'Accept': 'application/vnd.github.v3+json',
+        'User-Agent': 'InfographicViewer/1.0',
+      },
+    });
+    
+    if (!masterResponse.ok) {
+      throw new Error(`GitHub API error: ${response.status} - Could not fetch repository tree`);
+    }
+    
+    const data = await masterResponse.json() as GitHubTree;
+    return data.tree;
+  }
+  
+  const data = await response.json() as GitHubTree;
+  return data.tree;
+}
+
+/**
+ * Fetch file content from GitHub API
+ */
+async function fetchFileContent(owner: string, repo: string, path: string): Promise<string | null> {
+  const url = `${GITHUB_API_BASE}/repos/${owner}/${repo}/contents/${path}`;
+  
+  const response = await fetch(url, {
+    headers: {
+      'Accept': 'application/vnd.github.v3+json',
+      'User-Agent': 'InfographicViewer/1.0',
+    },
+  });
+  
+  if (!response.ok) {
+    logger.warn(`[GitHub] Failed to fetch ${path}: ${response.status}`);
+    return null;
+  }
+  
+  const data = await response.json() as GitHubContent;
+  
+  if (data.content && data.encoding === 'base64') {
+    return Buffer.from(data.content, 'base64').toString('utf-8');
+  }
+  
+  return null;
+}
+
+/**
+ * Fetch all relevant source files from a GitHub repository
+ */
+async function fetchRepoFiles(repoUrl: string): Promise<{ files: RepoFile[]; fileList: string[] }> {
+  const parsed = parseGitHubUrl(repoUrl);
+  if (!parsed) {
+    throw new Error('Invalid GitHub URL format');
+  }
+  
+  const { owner, repo } = parsed;
+  logger.info(`[GitHub] Fetching files for ${owner}/${repo}`);
+  
+  // Get file tree
+  const tree = await fetchRepoTree(owner, repo);
+  logger.info(`[GitHub] Found ${tree.length} items in tree`);
+  
+  // Filter to source files
+  const sourceFiles = tree.filter(item => 
+    item.type === 'blob' && shouldIncludeFile(item.path, item.size)
+  );
+  logger.info(`[GitHub] Filtered to ${sourceFiles.length} source files`);
+  
+  // Sort by likely importance (entry points first, then by size)
+  const priorityFiles = ['main', 'index', 'app', 'server', 'cli', '__main__'];
+  sourceFiles.sort((a, b) => {
+    const aName = a.path.toLowerCase();
+    const bName = b.path.toLowerCase();
+    const aPriority = priorityFiles.findIndex(p => aName.includes(p));
+    const bPriority = priorityFiles.findIndex(p => bName.includes(p));
+    if (aPriority !== -1 && bPriority === -1) return -1;
+    if (bPriority !== -1 && aPriority === -1) return 1;
+    if (aPriority !== -1 && bPriority !== -1) return aPriority - bPriority;
+    return (a.size || 0) - (b.size || 0); // Smaller files first (often more important)
+  });
+  
+  // Fetch file contents (limit to avoid rate limits and token limits)
+  const files: RepoFile[] = [];
+  let totalContent = 0;
+  const maxFiles = 20;
+  
+  for (const item of sourceFiles.slice(0, maxFiles)) {
+    if (totalContent >= MAX_TOTAL_CONTENT) {
+      logger.info(`[GitHub] Reached content limit at ${totalContent} chars`);
+      break;
+    }
+    
+    const content = await fetchFileContent(owner, repo, item.path);
+    if (content) {
+      const truncatedContent = content.slice(0, MAX_TOTAL_CONTENT - totalContent);
+      files.push({
+        path: item.path,
+        content: truncatedContent,
+        size: item.size || truncatedContent.length,
+        language: detectLanguage(item.path),
+      });
+      totalContent += truncatedContent.length;
+      logger.info(`[GitHub] Fetched ${item.path} (${truncatedContent.length} chars)`);
+    }
+  }
+  
+  // Also return full file list for reference
+  const fileList = sourceFiles.map(f => f.path);
+  
+  logger.info(`[GitHub] Fetched ${files.length} files, ${totalContent} total chars`);
+  return { files, fileList };
+}
+
+/**
+ * Build the analysis prompt for the LLM with actual file contents
+ */
+function buildAnalysisPromptWithFiles(repoUrl: string, files: RepoFile[], fileList: string[]): string {
+  // Build file contents section
+  let fileContentsSection = '';
+  if (files.length > 0) {
+    fileContentsSection = `
+================================================================================
+ACTUAL FILE CONTENTS FROM THE REPOSITORY
+================================================================================
+
+The following are the ACTUAL source files from this repository. Use ONLY these files
+and their exact paths in your analysis. Do NOT invent file paths or code.
+
+`;
+    for (const file of files) {
+      fileContentsSection += `
+--- FILE: ${file.path} (${file.language}) ---
+${file.content}
+--- END FILE ---
+
+`;
+    }
+    
+    // Add list of all files for reference
+    if (fileList.length > files.length) {
+      fileContentsSection += `
+--- ADDITIONAL FILES IN REPOSITORY (not shown) ---
+${fileList.filter(f => !files.some(ff => ff.path === f)).join('\n')}
+--- END FILE LIST ---
+
+`;
+    }
+  }
+
   return `
 You are a Principal Systems Architect with expertise in code analysis. Your task is to analyze the GitHub repository at:
 ${repoUrl}
 
 You must produce a HIERARCHICAL JSON structure that an iOS app can use for interactive drill-down navigation.
 The user will tap on elements to zoom in and see more detail, recursively, until they reach the actual code.
-
+${fileContentsSection}
 ================================================================================
 ANALYSIS INSTRUCTIONS
 ================================================================================
 
-1. **FETCH THE ENTIRE REPOSITORY**
-   - Read all source files from the repository
+1. **ANALYZE THE PROVIDED CODE**
+   - Study the actual source files provided above
    - Understand the project structure and dependencies
    - Identify the programming language(s) used
 
 2. **IDENTIFY ENTRY POINTS**
-   - Find main entry points (main.py, app.py, index.js, __main__.py, etc.)
+   - Find main entry points from the provided files
    - Identify CLI entry points, web routes, or event handlers
    - Note which files are the "starting points" of execution
 
@@ -85,9 +362,9 @@ ANALYSIS INSTRUCTIONS
    - Identify data transformations and I/O operations
 
 4. **EXTRACT RELEVANT CODE**
-   - For each function/class you identify, extract the actual source code
+   - For each function/class, use the EXACT code from the files provided above
    - Include ONLY the relevant functions, not entire files
-   - Preserve proper indentation and formatting
+   - Use the EXACT file paths from the provided files
 
 5. **BUILD THE HIERARCHY**
    Create a tree with these levels (use as many as appropriate):
@@ -95,9 +372,9 @@ ANALYSIS INSTRUCTIONS
    Level 0: REPO (root)
       └── Level 1: PHASE (pipeline phases like Ingestion, Processing, Output)
              └── Level 2: STEP (specific processing steps)
-                    └── Level 3: FILE (source files involved)
+                    └── Level 3: FILE (source files - USE EXACT PATHS FROM PROVIDED FILES)
                            └── Level 4: FUNCTION (functions/classes)
-                                  └── Level 5: CODE_BLOCK (actual code)
+                                  └── Level 5: CODE_BLOCK (actual code FROM PROVIDED FILES)
 
 ================================================================================
 PHASE DEFINITIONS
@@ -216,36 +493,38 @@ For "code_block" nodes (LEAF NODES), add:
 CRITICAL RULES
 ================================================================================
 
-1. **REAL CODE ONLY**: Extract actual code from the repository. Do NOT make up code.
+1. **REAL CODE ONLY**: Use ONLY code from the files provided above. Do NOT make up code or file paths.
 
-2. **RELEVANT FUNCTIONS**: Only include functions that are part of the main execution flow.
+2. **EXACT FILE PATHS**: The file_path fields MUST match the exact paths from the provided files above.
+
+3. **RELEVANT FUNCTIONS**: Only include functions that are part of the main execution flow.
    Skip utility functions, tests, and configuration unless they're critical.
 
-3. **PROPER HIERARCHY**: Every step should drill down to files, then functions, then code.
+4. **PROPER HIERARCHY**: Every step should drill down to files, then functions, then code.
    The iOS app will let users tap to zoom in at each level.
 
-4. **GITHUB URLS**: Generate correct GitHub URLs with line numbers for code blocks:
+5. **GITHUB URLS**: Generate correct GitHub URLs with line numbers for code blocks:
    Format: https://github.com/owner/repo/blob/main/path/file.py#L10-L50
 
-5. **CONNECTIONS**: Add "connections" to step nodes to show data flow between steps.
+6. **CONNECTIONS**: Add "connections" to step nodes to show data flow between steps.
 
-6. **SF SYMBOLS**: Use valid SF Symbol names for icons:
+7. **SF SYMBOLS**: Use valid SF Symbol names for icons:
    - terminal, doc.text, function, gearshape, arrow.down.doc
    - play.fill, list.bullet.rectangle, wand.and.stars
    - chevron.left.forwardslash.chevron.right (for code)
 
-7. **COLORS**: Use a consistent color palette:
+8. **COLORS**: Use a consistent color palette:
    - Phase backgrounds: Light pastels (#E8F4FD, #FFF3E0, #E8F5E9, etc.)
    - Step boxes: Saturated versions (#4A90D9, #FF9800, #4CAF50, etc.)
    - Code: Language-specific (#3776AB for Python, #F7DF1E for JS, etc.)
 
-8. **EMPTY CHILDREN**: Leaf nodes (code_block) MUST have "children": []
+9. **EMPTY CHILDREN**: Leaf nodes (code_block) MUST have "children": []
 
-9. **VALID JSON**: All strings must be properly escaped:
-   - Newlines as \\n
-   - Tabs as \\t  
-   - Quotes as \\"
-   - Backslashes as \\\\
+10. **VALID JSON**: All strings must be properly escaped:
+    - Newlines as \\n
+    - Tabs as \\t  
+    - Quotes as \\"
+    - Backslashes as \\\\
 
 ================================================================================
 OUTPUT FORMAT
@@ -578,9 +857,23 @@ export async function generateInfographic(
     throw new Error('Invalid GitHub URL. Use format: https://github.com/owner/repo');
   }
   
-  // Build prompt
-  const prompt = buildAnalysisPrompt(repoUrl);
-  logger.info(`[Infographic] Prompt built (${prompt.length} chars)`);
+  // Fetch actual file contents from GitHub
+  logger.info(`[Infographic] Fetching repository files from GitHub...`);
+  let files: RepoFile[] = [];
+  let fileList: string[] = [];
+  try {
+    const repoData = await fetchRepoFiles(repoUrl);
+    files = repoData.files;
+    fileList = repoData.fileList;
+    logger.info(`[Infographic] Successfully fetched ${files.length} files (${fileList.length} total in repo)`);
+  } catch (error) {
+    logger.warn(`[Infographic] Failed to fetch repo files: ${(error as Error).message}`);
+    logger.warn(`[Infographic] Proceeding without file contents (LLM will attempt to fetch)`);
+  }
+  
+  // Build prompt with actual file contents
+  const prompt = buildAnalysisPromptWithFiles(repoUrl, files, fileList);
+  logger.info(`[Infographic] Prompt built (${prompt.length} chars, ${files.length} files included)`);
   
   // Call Cerebras directly
   const response = await fetch(CEREBRAS_API_URL, {
