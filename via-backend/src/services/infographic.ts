@@ -673,7 +673,132 @@ function repairJson(raw: string): string {
   text = text.replace(/(true|false|null)\s*{/g, '$1,{');
   text = text.replace(/(true|false|null)\s*\[/g, '$1,[');
   
+  // Fix unescaped quotes inside strings (very common LLM issue)
+  // This is tricky - we need to find strings and escape internal quotes
+  text = fixUnescapedQuotesInStrings(text);
+  
+  // Fix truncated JSON by closing open brackets/braces
+  text = closeTruncatedJson(text);
+  
   return text;
+}
+
+/**
+ * Fix unescaped quotes inside JSON string values
+ */
+function fixUnescapedQuotesInStrings(json: string): string {
+  // This attempts to fix cases where the LLM outputs:
+  // "code": "print("hello")"  -> should be "code": "print(\"hello\")"
+  
+  let result = '';
+  let i = 0;
+  
+  while (i < json.length) {
+    // Find start of a string value (after a colon)
+    if (json[i] === ':') {
+      result += json[i];
+      i++;
+      
+      // Skip whitespace
+      while (i < json.length && /\s/.test(json[i])) {
+        result += json[i];
+        i++;
+      }
+      
+      // Check if this is a string value
+      if (i < json.length && json[i] === '"') {
+        result += json[i]; // Opening quote
+        i++;
+        
+        // Process string content
+        while (i < json.length) {
+          if (json[i] === '\\' && i + 1 < json.length) {
+            // Already escaped character - keep as is
+            result += json[i] + json[i + 1];
+            i += 2;
+          } else if (json[i] === '"') {
+            // Check if this is the end of the string
+            // Look ahead to see if next non-whitespace is , or } or ]
+            let lookAhead = i + 1;
+            while (lookAhead < json.length && /\s/.test(json[lookAhead])) {
+              lookAhead++;
+            }
+            if (lookAhead >= json.length || /[,}\]]/.test(json[lookAhead])) {
+              // This is the closing quote
+              result += json[i];
+              i++;
+              break;
+            } else {
+              // This is an unescaped quote inside the string - escape it
+              result += '\\"';
+              i++;
+            }
+          } else if (json[i] === '\n' || json[i] === '\r' || json[i] === '\t') {
+            // Raw control characters - escape them
+            if (json[i] === '\n') result += '\\n';
+            else if (json[i] === '\r') result += '\\r';
+            else if (json[i] === '\t') result += '\\t';
+            i++;
+          } else {
+            result += json[i];
+            i++;
+          }
+        }
+      } else {
+        // Not a string value, continue normally
+      }
+    } else {
+      result += json[i];
+      i++;
+    }
+  }
+  
+  return result;
+}
+
+/**
+ * Close truncated JSON by adding missing brackets/braces
+ */
+function closeTruncatedJson(json: string): string {
+  const stack: string[] = [];
+  let inString = false;
+  let escaped = false;
+  
+  for (let i = 0; i < json.length; i++) {
+    const char = json[i];
+    
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    
+    if (char === '\\') {
+      escaped = true;
+      continue;
+    }
+    
+    if (char === '"') {
+      inString = !inString;
+      continue;
+    }
+    
+    if (!inString) {
+      if (char === '{') stack.push('}');
+      else if (char === '[') stack.push(']');
+      else if (char === '}' || char === ']') {
+        if (stack.length > 0 && stack[stack.length - 1] === char) {
+          stack.pop();
+        }
+      }
+    }
+  }
+  
+  // Close any unclosed brackets/braces
+  while (stack.length > 0) {
+    json += stack.pop();
+  }
+  
+  return json;
 }
 
 /**
@@ -952,23 +1077,39 @@ export async function generateInfographic(
   let jsonString = extractJsonFromResponse(rawContent);
   logger.info(`[Infographic] Extracted JSON candidate (${jsonString.length} chars)`);
   
-  // Try to parse, with repair fallback
+  // Try to parse, with multiple repair attempts
   let parsed: InfographicData;
-  try {
-    parsed = JSON.parse(jsonString);
-  } catch (e1) {
-    logger.warn(`[Infographic] Initial parse failed: ${(e1 as Error).message}`);
-    logger.warn(`[Infographic] Attempting JSON repair...`);
+  const parseAttempts = [
+    { name: 'direct', fn: () => JSON.parse(jsonString) },
+    { name: 'sanitized', fn: () => JSON.parse(sanitizeJsonString(jsonString)) },
+    { name: 'repaired', fn: () => JSON.parse(repairJson(jsonString)) },
+  ];
+  
+  let lastError: Error | null = null;
+  for (const attempt of parseAttempts) {
     try {
-      const repaired = repairJson(jsonString);
-      parsed = JSON.parse(repaired);
-      logger.info(`[Infographic] Repaired JSON parsed successfully`);
-    } catch (e2) {
-      logger.error(`[Infographic] JSON parse failed after repair`);
-      logger.error(`[Infographic] First 500 chars: ${jsonString.slice(0, 500)}`);
-      logger.error(`[Infographic] Last 500 chars: ${jsonString.slice(-500)}`);
-      throw new Error(`Failed to parse JSON from model response: ${(e2 as Error).message}`);
+      parsed = attempt.fn();
+      logger.info(`[Infographic] JSON parsed successfully (${attempt.name})`);
+      break;
+    } catch (e) {
+      lastError = e as Error;
+      logger.warn(`[Infographic] Parse attempt '${attempt.name}' failed: ${lastError.message}`);
     }
+  }
+  
+  if (!parsed!) {
+    logger.error(`[Infographic] All JSON parse attempts failed`);
+    logger.error(`[Infographic] First 500 chars: ${jsonString.slice(0, 500)}`);
+    logger.error(`[Infographic] Last 500 chars: ${jsonString.slice(-500)}`);
+    
+    // Log the specific position of the error if available
+    const posMatch = lastError?.message.match(/position (\d+)/);
+    if (posMatch) {
+      const pos = parseInt(posMatch[1]);
+      logger.error(`[Infographic] Around error position: ...${jsonString.slice(Math.max(0, pos - 50), pos + 50)}...`);
+    }
+    
+    throw new Error(`Failed to parse JSON from model response: ${lastError?.message}`);
   }
   
   // Validate and enhance
