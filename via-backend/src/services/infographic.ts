@@ -980,8 +980,45 @@ function calculateStatistics(data: InfographicData): Record<string, number> {
 
 /**
  * Generate an interactive infographic from a GitHub repository
+ * Includes retry logic for intermittent LLM failures
  */
 export async function generateInfographic(
+  repoUrl: string,
+  cerebrasApiKey: string,
+  model: string = DEFAULT_MODEL
+): Promise<{ data: InfographicData; stats: Record<string, number> }> {
+  const MAX_RETRIES = 2;
+  let lastError: Error | null = null;
+  
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      logger.info(`[Infographic] Attempt ${attempt}/${MAX_RETRIES} for: ${repoUrl}`);
+      return await generateInfographicInternal(repoUrl, cerebrasApiKey, model);
+    } catch (error) {
+      lastError = error as Error;
+      logger.warn(`[Infographic] Attempt ${attempt} failed: ${lastError.message}`);
+      
+      // Don't retry for certain errors
+      if (lastError.message.includes('private or does not exist') ||
+          lastError.message.includes('Invalid GitHub URL') ||
+          lastError.message.includes('Rate limited')) {
+        throw lastError;
+      }
+      
+      if (attempt < MAX_RETRIES) {
+        logger.info(`[Infographic] Retrying in 2 seconds...`);
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+    }
+  }
+  
+  throw lastError || new Error('Failed to generate infographic');
+}
+
+/**
+ * Internal implementation of infographic generation
+ */
+async function generateInfographicInternal(
   repoUrl: string,
   cerebrasApiKey: string,
   model: string = DEFAULT_MODEL
