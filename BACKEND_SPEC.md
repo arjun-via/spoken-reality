@@ -12,7 +12,7 @@ This document specifies the backend architecture for Via's MVP — a voice-first
 
 **Core Flow:**
 ```
-iOS App → WebSocket → Backend → Grok Voice API (STT) → Claude Sonnet 4.5 (code) → E2B (execution) → WebView
+iOS App → WebSocket → Backend → OpenAI Whisper (STT) → Claude (code) → E2B (execution) → WebView
 ```
 
 **Design Principle:** Simplest possible architecture that delivers sub-3-second voice-to-visual latency.
@@ -28,8 +28,8 @@ iOS App → WebSocket → Backend → Grok Voice API (STT) → Claude Sonnet 4.5
 | **Database** | PostgreSQL (Railway-managed) | Single DB for everything, no ops overhead | Stable |
 | **ORM** | Prisma | Type-safe, simple migrations, great DX | v5.x stable |
 | **Authentication** | Clerk | Handles iOS SDK, no custom auth code, free tier up to 10K MAU | Stable, iOS SDK available |
-| **Voice API** | Grok Voice Agent API (xAI) | Sub-second latency, $0.05/min, #1 on Big Bench Audio benchmark | Released Dec 2025 |
-| **AI Model** | Claude Sonnet 4.5 (Anthropic) | Best balance of speed + code quality, released Sept 29, 2025 | Current production model |
+| **Voice STT** | OpenAI Whisper | Industry standard, high accuracy, $0.006/min | Stable |
+| **AI Model** | Anthropic Claude | Best code generation quality | Current production model |
 | **Code Execution** | E2B Sandboxes | <200ms startup, 24-hour sessions, battle-tested for AI agents | Stable |
 | **Hosting** | Railway | One-click deploy, managed Postgres, WebSocket support, global scaling | Stable |
 
@@ -56,13 +56,13 @@ iOS App → WebSocket → Backend → Grok Voice API (STT) → Claude Sonnet 4.5
 
 | API | Latency | Cost | Notes |
 |-----|---------|------|-------|
-| **Grok Voice Agent API** | <1s time-to-first-audio | $0.05/min | #1 Big Bench Audio, native LiveKit integration |
-| OpenAI Realtime API | <1s | ~$0.10/min | More mature, 2x cost |
+| **OpenAI Whisper** | <1s | $0.006/min | Industry standard, high accuracy |
 | Deepgram | <300ms STT | $0.0043/min | STT only, need separate TTS |
 
-**Decision: Grok Voice Agent API**
-- Best price/performance ratio
-- Full voice agent capabilities (STT + TTS + conversation)
+**Decision: OpenAI Whisper**
+- Industry standard with excellent accuracy
+- Simple integration via OpenAI SDK
+- Cost-effective at $0.006/minute
 - Compatible with OpenAI Realtime API spec (easy migration if needed)
 
 ---
@@ -101,9 +101,9 @@ iOS App → WebSocket → Backend → Grok Voice API (STT) → Claude Sonnet 4.5
 │                            │                                          │
 │  ┌─────────────────────────▼──────────────────────────────────────┐  │
 │  │                    Voice Pipeline                               │  │
-│  │  • Grok Voice Agent API integration                             │  │
-│  │  • Speech-to-text (streaming)                                   │  │
-│  │  • Text-to-speech (for agent responses)                         │  │
+│  │  • OpenAI Whisper integration                                   │  │
+│  │  • Speech-to-text                                               │  │
+│  │  • Text-to-speech (planned)                                     │  │
 │  └─────────────────────────┬──────────────────────────────────────┘  │
 │                            │                                          │
 │  ┌─────────────────────────▼──────────────────────────────────────┐  │
@@ -130,9 +130,9 @@ iOS App → WebSocket → Backend → Grok Voice API (STT) → Claude Sonnet 4.5
           ┌────────────────┼────────────────┐
           ▼                ▼                ▼
    ┌────────────┐   ┌────────────┐   ┌────────────┐
-   │   Grok     │   │  Claude    │   │    E2B     │
-   │  Voice API │   │ Sonnet 4.5 │   │  Sandbox   │
-   │  (xAI)     │   │ (Anthropic)│   │            │
+   │  OpenAI    │   │  Claude    │   │    E2B     │
+   │  Whisper   │   │ (Anthropic)│   │  Sandbox   │
+   │  (STT)     │   │            │   │            │
    └────────────┘   └────────────┘   └────────────┘
 ```
 
@@ -571,7 +571,7 @@ interface SessionManager {
 
 ### 3. Voice Pipeline (`src/services/VoicePipeline.ts`)
 
-Handles voice input/output via Grok Voice Agent API.
+Handles voice input/output via OpenAI Whisper API.
 
 ```typescript
 interface VoicePipeline {
@@ -585,11 +585,11 @@ interface VoicePipeline {
 }
 ```
 
-**Grok Voice Agent API Integration:**
-- **Endpoint:** `https://api.x.ai/v1/audio/speech` (TTS), `https://api.x.ai/v1/audio/transcriptions` (STT)
-- **Model:** `grok-2-audio` (or latest available)
-- **Streaming:** Yes, for real-time transcription
-- **Cost:** $0.05/minute of audio
+**OpenAI Whisper Integration:**
+- **Endpoint:** OpenAI SDK `audio.transcriptions.create`
+- **Model:** `whisper-1`
+- **Format:** WAV (16-bit PCM, 16kHz, mono)
+- **Cost:** $0.006/minute of audio
 - **Latency:** <1 second time-to-first-audio
 - **Features:** Native conversation handling, context awareness
 
@@ -766,8 +766,8 @@ interface CheckpointManager {
 | From | Event | To | Action |
 |------|-------|-----|--------|
 | IDLE | voice.start | LISTENING | Start audio capture |
-| LISTENING | voice.end | INTERPRETING | Send to Grok STT |
-| LISTENING | 1.5s silence | INTERPRETING | Auto-end, send to Grok |
+| LISTENING | voice.end | INTERPRETING | Send to Whisper STT |
+| LISTENING | 1.5s silence | INTERPRETING | Auto-end, send to Whisper |
 | INTERPRETING | intent parsed | PLANNING | Determine code changes |
 | INTERPRETING | ambiguous | CLARIFYING | Ask clarification question |
 | CLARIFYING | user responds | PLANNING | Re-parse with clarification |
@@ -867,7 +867,7 @@ via-backend/
 │   │   └── types.ts                # WebSocket message types
 │   ├── services/
 │   │   ├── SessionManager.ts       # Session & state management
-│   │   ├── VoicePipeline.ts        # Grok voice integration
+│   │   ├── VoicePipeline.ts        # OpenAI Whisper STT
 │   │   ├── AIOrchestrator.ts       # Claude integration
 │   │   ├── SandboxManager.ts       # E2B integration
 │   │   └── CheckpointManager.ts    # Version control
@@ -908,7 +908,7 @@ DATABASE_URL=postgresql://...
 CLERK_SECRET_KEY=sk_...
 CLERK_PUBLISHABLE_KEY=pk_...
 
-# Voice API (xAI Grok)
+# Voice API (OpenAI Whisper)
 GROK_API_KEY=xai-...
 
 # AI Model (Anthropic Claude)
@@ -930,9 +930,9 @@ Target: **< 3 seconds** from voice end to visual update
 | Stage | Target | Notes |
 |-------|--------|-------|
 | Voice capture end | 0ms | Baseline |
-| Audio → Grok STT | 500ms | Streaming, time-to-first-token |
+| Audio → Whisper STT | 500ms | Batch transcription |
 | Intent parsing (Claude) | 300ms | Simple structured output |
-| Code generation (Claude Sonnet 4.5) | 1200ms | Main bottleneck |
+| Code generation (Claude) | 1200ms | Main bottleneck |
 | E2B file write | 100ms | Fast, sandbox already running |
 | Vite HMR | 200ms | Hot reload, not full rebuild |
 | WebView update | 100ms | Client-side |
@@ -963,7 +963,7 @@ All errors must:
 
 | Category | Example | Recovery |
 |----------|---------|----------|
-| **Voice** | Grok API timeout | "I didn't catch that. Try again?" |
+| **Voice** | Whisper API timeout | "I didn't catch that. Try again?" |
 | **AI** | Claude rate limit | "I'm thinking too hard. Give me a moment." |
 | **Sandbox** | E2B startup failed | "Preview isn't loading. Retrying..." |
 | **Code** | Generated code has errors | "That didn't work. Let me try a different approach." |
@@ -1031,8 +1031,8 @@ healthcheckTimeout = 30
 | **Railway (Pro)** | $20/month base | Includes 8GB RAM, 8 vCPU |
 | **PostgreSQL** | $10/month | Included in Railway |
 | **Clerk** | Free tier | Up to 10,000 MAU |
-| **Grok Voice API** | $0.05/minute | Audio processing |
-| **Claude Sonnet 4.5** | $3/1M input, $15/1M output | Code generation |
+| **OpenAI Whisper** | $0.006/minute | Audio processing |
+| **Claude** | $3/1M input, $15/1M output | Code generation |
 | **E2B Sandboxes** | $0.10/hour | Per active sandbox |
 
 ### Estimated Monthly Cost (100 Active Users)
@@ -1048,9 +1048,9 @@ Assumptions:
 | Railway | Base plan | $20 |
 | PostgreSQL | Included | $0 |
 | Clerk | Free tier | $0 |
-| Grok Voice | 100 × 10 min × 30 days × $0.05 | $150 |
-| Claude Sonnet 4.5 Input | 100 × 50 × 30 × 2K tokens × $3/1M | $9 |
-| Claude Sonnet 4.5 Output | 100 × 50 × 30 × 4K tokens × $15/1M | $90 |
+| OpenAI Whisper | 100 × 10 min × 30 days × $0.006 | $18 |
+| Claude Input | 100 × 50 × 30 × 2K tokens × $3/1M | $9 |
+| Claude Output | 100 × 50 × 30 × 4K tokens × $15/1M | $90 |
 | E2B | 100 × 2 hr × 30 days × $0.10 | $600 |
 | **Total** | | **~$870/month** |
 
@@ -1068,7 +1068,7 @@ Assumptions:
 5. Database schema and migrations
 
 ### Phase 2: Voice Pipeline (Week 2)
-1. Grok Voice API integration
+1. OpenAI Whisper integration
 2. Audio streaming (client → server)
 3. Real-time transcription
 4. TTS for agent responses
@@ -1097,7 +1097,7 @@ Assumptions:
 
 ## Open Questions
 
-1. **Grok API access**: Need to verify API availability and get credentials from xAI
+1. **TTS Integration**: Consider OpenAI TTS or ElevenLabs for agent voice responses
 2. **E2B template**: Need to create custom template with pre-installed Next.js 15 stack
 3. **iOS audio format**: Confirm audio format compatibility (PCM 16-bit, 16kHz)
 4. **Clerk iOS SDK**: Verify WebSocket token flow works on iOS
@@ -1111,7 +1111,7 @@ Assumptions:
 |---------|--------------|-------|
 | Clerk | clerk.com | Free tier available |
 | Anthropic (Claude) | console.anthropic.com | Requires approval |
-| xAI (Grok) | x.ai/api | May require waitlist |
+| OpenAI | platform.openai.com | For Whisper STT |
 | E2B | e2b.dev | Free tier available |
 
 ---
@@ -1119,7 +1119,7 @@ Assumptions:
 **Document Status:** Ready for implementation
 
 **Next Steps:**
-1. Get API keys (Grok, Claude, E2B, Clerk)
+1. Get API keys (OpenAI, Claude, E2B, Clerk)
 2. Set up Railway project
 3. Create E2B template with Next.js 15 stack
 4. Begin Phase 1 implementation

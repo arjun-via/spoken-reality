@@ -8,7 +8,7 @@ Backend service for Via — a voice-first app builder.
 
 - Node.js 20+
 - PostgreSQL (local or Railway)
-- API keys for: Clerk, E2B, xAI (Grok), Anthropic (Claude)
+- API keys for: Clerk, E2B, OpenAI (Whisper), Anthropic (Claude)
 
 ### Setup
 
@@ -62,7 +62,7 @@ via-backend/
 │   │   └── types.ts          # Message types
 │   ├── services/
 │   │   ├── SessionManager.ts # User sessions
-│   │   ├── VoicePipeline.ts  # Grok voice API
+│   │   ├── VoicePipeline.ts  # OpenAI Whisper STT
 │   │   ├── AIOrchestrator.ts # Claude code gen
 │   │   ├── SandboxManager.ts # E2B sandboxes
 │   │   └── CheckpointManager.ts # Version control
@@ -178,7 +178,7 @@ Environment variables needed in Railway:
 - `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`
 - `CLERK_SECRET_KEY`
 - `E2B_API_KEY`
-- `XAI_API_KEY`
+- `OPENAI_API_KEY` (for Whisper STT)
 - `ANTHROPIC_API_KEY`
 - `CEREBRAS_API_KEY` (for infographic generation)
 - `DATABASE_URL` (auto-provided by Railway PostgreSQL)
@@ -189,8 +189,8 @@ Environment variables needed in Railway:
 - **Framework:** Express + ws
 - **Database:** PostgreSQL + Prisma
 - **Auth:** Clerk
-- **Voice:** xAI Grok Voice API
-- **AI:** Claude Sonnet 4.5
+- **Voice STT:** OpenAI Whisper
+- **AI:** Anthropic Claude
 - **Sandboxes:** E2B
 
 ## Current Status
@@ -208,5 +208,5 @@ Environment variables needed in Railway:
 
 1. Test locally
 2. Deploy to Railway
-3. Implement full voice pipeline with Grok
-4. Connect to iOS frontend
+3. Connect to iOS frontend
+4. Add TTS for agent voice responses

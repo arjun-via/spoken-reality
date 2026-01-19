@@ -42,7 +42,7 @@ The iOS app streams audio in the following format:
 **Backend Must:**
 - Accept Base64-encoded PCM audio in `voice.chunk` messages
 - Decode Base64 to raw PCM data
-- Feed decoded PCM directly to Grok Voice API
+- Feed decoded PCM directly to OpenAI Whisper API
 - Handle streaming chunks (not complete files)
 
 ## WebSocket Message Protocol
@@ -94,8 +94,8 @@ Sent every 100ms during recording with audio data.
 
 **Backend Action:**
 - Decode Base64 audio
-- Stream to Grok Voice API
-- Return partial transcriptions as they arrive
+- Send to OpenAI Whisper API
+- Return transcription when complete
 
 #### 3. voice.end
 Sent when user releases record button.
@@ -349,7 +349,7 @@ Sent when an error occurs.
 - If not recoverable, shows OK button only
 
 **Error Codes to Implement:**
-- `TRANSCRIPTION_FAILED` - Grok Voice API error
+- `TRANSCRIPTION_FAILED` - OpenAI Whisper API error
 - `CLAUDE_ERROR` - Claude API error
 - `SANDBOX_ERROR` - E2B sandbox error
 - `INVALID_COMMAND` - User command not understood
@@ -427,7 +427,7 @@ WEBSOCKET_PORT=8080
 CLERK_PUBLISHABLE_KEY=pk_...
 CLERK_SECRET_KEY=sk_...
 
-# Grok
+# OpenAI (Whisper)
 GROK_API_KEY=...
 GROK_API_URL=https://api.x.ai/v1
 
@@ -453,11 +453,11 @@ DATABASE_URL=postgresql://...
 - [ ] Keep-alive pings keep connection alive
 
 ### Audio Streaming Testing
-- [ ] voice.start message received
-- [ ] Audio chunks decoded correctly
-- [ ] PCM data fed to Grok successfully
+- [x] voice.start message received
+- [x] Audio chunks decoded correctly
+- [x] PCM data fed to Whisper successfully
 - [ ] Partial transcriptions sent back
-- [ ] Final transcription sent on voice.end
+- [x] Final transcription sent on voice.end
 - [ ] Long recordings handled (>1 minute)
 
 ### Agent State Testing
@@ -494,9 +494,9 @@ DATABASE_URL=postgresql://...
 
 **Backend Should:**
 - Buffer chunks efficiently
-- Don't wait for full recording to start transcription
-- Stream to Grok in real-time
-- Send partial transcriptions immediately
+- Collect all audio before transcription (Whisper batch mode)
+- Send to Whisper when recording ends
+- Send final transcription immediately
 
 ### WebSocket Optimization
 - Use binary frames for large payloads if needed
@@ -537,9 +537,9 @@ DATABASE_URL=postgresql://...
 ## Next Steps
 
 1. **Immediate:**
-   - Deploy backend to wss://api.via.app/ws OR update frontend URL
-   - Implement audio chunk handling and Grok integration
-   - Test end-to-end voice → transcription → command flow
+   - ✅ Deploy backend to Railway (spoken-reality-production-9cd5.up.railway.app)
+   - ✅ Implement audio chunk handling and Whisper integration
+   - ✅ Test end-to-end voice → transcription → command flow
 
 2. **Short-term:**
    - Integrate Clerk authentication on both sides

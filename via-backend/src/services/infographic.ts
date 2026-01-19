@@ -31,11 +31,11 @@ const SKIP_PATTERNS = [
   '.min.js', '.bundle.js', 'test', 'tests', 'spec', '__tests__'
 ];
 
-// Max file size to fetch (100KB)
-const MAX_FILE_SIZE = 100 * 1024;
+// Max file size to fetch (50KB)
+const MAX_FILE_SIZE = 50 * 1024;
 
-// Max total content to send to LLM (chars)
-const MAX_TOTAL_CONTENT = 50000;
+// Max total content to send to LLM (chars) - reduced to avoid token limits
+const MAX_TOTAL_CONTENT = 30000;
 
 // Phase colors for consistent styling
 const PHASE_COLORS: Record<string, { background: string; accent: string; icon: string }> = {
@@ -922,10 +922,20 @@ export async function generateInfographic(
     throw new Error(`Cerebras API error: ${response.status} - ${errorText.slice(0, 200)}`);
   }
   
-  const result = await response.json() as {
+  const resultText = await response.text();
+  logger.info(`[Infographic] Raw response length: ${resultText.length}`);
+  
+  let result: {
     choices?: Array<{ message?: { content?: string } }>;
     error?: { message?: string };
   };
+  
+  try {
+    result = JSON.parse(resultText);
+  } catch (e) {
+    logger.error(`[Infographic] Failed to parse Cerebras response: ${resultText.slice(0, 500)}`);
+    throw new Error('Invalid response from Cerebras API');
+  }
   
   if (result.error) {
     throw new Error(`OpenRouter error: ${result.error.message}`);

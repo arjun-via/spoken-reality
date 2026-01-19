@@ -9,6 +9,7 @@ import { Server } from 'http';
 import { logger } from '../utils/logger.js';
 import { handleMessage, AuthenticatedWebSocket } from './handlers.js';
 import { WebSocketMessage, createMessage } from './types.js';
+import * as SandboxManager from '../services/SandboxManager.js';
 import { prewarmSandbox } from '../services/SandboxManager.js';
 
 // Store active connections by userId
@@ -122,13 +123,30 @@ export function initWebSocketServer(httpServer: Server): WebSocketServer {
     });
   });
 
-  // Heartbeat interval
-  const heartbeatInterval = setInterval(() => {
+  // Heartbeat interval - also keeps sandboxes alive for active connections
+  const heartbeatInterval = setInterval(async () => {
+    const activeProjects = new Set<string>();
+    
     wss.clients.forEach((ws) => {
       if (ws.readyState === WebSocket.OPEN) {
         ws.ping();
+        // Track active projects for sandbox keepalive
+        const authWs = ws as AuthenticatedWebSocket;
+        if (authWs.currentProjectId) {
+          activeProjects.add(authWs.currentProjectId);
+        }
       }
     });
+    
+    // Keep sandboxes alive for active projects
+    for (const projectId of activeProjects) {
+      try {
+        await SandboxManager.keepAlive(projectId);
+        logger.debug('Sandbox keepalive sent', { projectId });
+      } catch (error) {
+        logger.warn('Sandbox keepalive failed', { projectId, error });
+      }
+    }
   }, 30000); // Every 30 seconds
 
   wss.on('close', () => {

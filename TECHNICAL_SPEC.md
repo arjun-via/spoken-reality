@@ -34,7 +34,7 @@ A mobile app where engineers speak their intentions, watch production-quality ap
 
 #### 1. 🎤 Voice-First Creation
 - Speak intentions, not prompts
-- Sub-second latency via Grok Voice API
+- Voice transcription via OpenAI Whisper
 - Natural conversation, not commands
 - Push-to-talk interaction model (reactive, not proactive)
 
@@ -67,19 +67,19 @@ A mobile app where engineers speak their intentions, watch production-quality ap
 ```
 [iOS App (Swift)]
     ↓ (voice input)
-[Grok Voice API]
-    ↓ (intent + code generation)
-[Centralized Cloud Service]
-    ↓ (code output)
-[Vite Dev Server]
-    ↓ (HTTP/WebSocket)
+[OpenAI Whisper]
+    ↓ (transcription)
+[Anthropic Claude]
+    ↓ (code generation)
+[E2B Sandbox]
+    ↓ (Next.js dev server)
 [WebView in iOS App]
 ```
 
 **Data Flow:** Direct pipeline for minimal latency
-- User voice input → Grok Voice API
-- Grok processes conversation AND generates code (single model)
-- Generated code → Vite dev server (persistent cloud workspace)
+- User voice input → OpenAI Whisper (speech-to-text)
+- Transcription → Anthropic Claude (code generation)
+- Generated code → E2B sandbox (Next.js dev server)
 - Dev server → WebView with HMR (hot module replacement)
 - WebView always interactive, updates stream in real-time
 
@@ -108,8 +108,9 @@ A mobile app where engineers speak their intentions, watch production-quality ap
 
 #### Code Generation
 - **Platform:** Centralized cloud service (standard SaaS architecture)
-- **Model:** Grok Voice API (handles both conversation and code generation)
-- **Latency Target:** Sub-second voice-to-visual-update
+- **STT Model:** OpenAI Whisper (speech-to-text)
+- **AI Model:** Anthropic Claude (code generation)
+- **Latency Target:** Fast voice-to-visual-update
 
 #### Development Environments
 - **Type:** Persistent cloud project workspaces
@@ -405,7 +406,7 @@ System: "Repository ready. It includes all code, tests, README, and environment 
 - Open source parts of generated code for transparency
 
 #### Other Risks
-- Grok Voice API latency/quality (backup: text input fallback)
+- Voice transcription latency/quality (backup: text input fallback)
 - Voice UX breakdown for complex apps (backup: on-demand code access)
 - Cultural resistance to code invisibility (backup: trust-building via inspection)
 
@@ -475,7 +476,7 @@ System: "Repository ready. It includes all code, tests, README, and environment 
 - System pulls from vault securely
 
 ### Latency Fallback
-- **Primary:** Grok Voice API (sub-second)
+- **Primary:** OpenAI Whisper (fast transcription)
 - **Fallback:** Text input when voice unavailable/slow
 - Graceful degradation without breaking workflow
 
@@ -536,7 +537,8 @@ System: "Repository ready. It includes all code, tests, README, and environment 
 
 | Category | Decision | Rationale |
 |----------|----------|-----------|
-| **Voice Model** | Grok Voice API (conversation + code) | Single model for consistency, sub-second latency |
+| **Voice STT** | OpenAI Whisper | Industry standard, high accuracy, cost-effective |
+| **AI Model** | Anthropic Claude | Best code generation quality |
 | **Mobile Platform** | Native iOS (Swift) | Fastest to TestFlight, best performance, Apple-first strategy |
 | **Frontend Stack** | Next.js + Tailwind + Shadcn/UI | Industry standard, production-grade, great DX |
 | **Backend Stack** | Next.js API + Prisma + PostgreSQL | Integrated full-stack, type-safe, scales well |
@@ -555,9 +557,9 @@ System: "Repository ready. It includes all code, tests, README, and environment 
 
 ### Phase 0: Foundation (Pre-MVP)
 1. iOS app shell with WebView + mic button
-2. Grok Voice API integration
+2. OpenAI Whisper integration for voice transcription
 3. Basic code generation pipeline (Next.js scaffold)
-4. Persistent cloud workspace provisioning
+4. E2B sandbox provisioning
 5. Vite dev server deployment
 
 ### Phase 1: Core Loop
@@ -586,6 +588,6 @@ System: "Repository ready. It includes all code, tests, README, and environment 
 **Next Steps:**
 1. Technical architecture deep-dive
 2. iOS app wireframes and design
-3. Grok API evaluation and testing
+3. Voice API evaluation and testing
 4. Infrastructure cost modeling
 5. Alpha tester recruitment plan

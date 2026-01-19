@@ -14,7 +14,7 @@ Spoken Reality is a revolutionary coding platform that prioritizes voice interac
 
 ## Core Principles
 
-1. **Voice-First Creation**: Speak intentions, not prompts (sub-second latency via Grok Voice API)
+1. **Voice-First Creation**: Speak intentions, not prompts (using OpenAI Whisper for transcription)
 2. **Mobile-Native Architecture**: Build from anywhere with single-screen design
 3. **Output is Primary**: Live WebView updates, code is invisible until you want to see it
 4. **Production-Grade from Day One**: Industrial strength architecture, proper error handling
@@ -46,8 +46,8 @@ Spoken Reality is a revolutionary coding platform that prioritizes voice interac
   - Checkpoint system
 
 ### Key Technologies
-- **Voice**: Grok Voice API (planned)
-- **AI**: Anthropic Claude (Claude Agent SDK), Cerebras (Infographics)
+- **Voice**: OpenAI Whisper (speech-to-text)
+- **AI**: Anthropic Claude (code generation), Cerebras (Infographics)
 - **Sandboxes**: E2B Code Interpreter
 - **Generated Apps**: Next.js 15 + React 19 + Tailwind CSS
 - **Infographics**: Interactive repository visualization
@@ -138,7 +138,6 @@ open SpokenRealityApp/SpokenRealityApp.xcodeproj
 - ✅ Auto-retry and error handling
 
 ### Planned
-- ⏳ Grok Voice API integration
 - ⏳ Real-time streaming narrative updates
 - ⏳ Multi-turn conversation context
 - ⏳ Git integration (commit/push)

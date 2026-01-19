@@ -1,3 +1,5 @@
+> **Note:** This is a historical design document from early concept discussions. The implementation has evolved - we now use OpenAI Whisper for STT instead of Grok Voice, and Claude for code generation. See `PROJECT_STATUS.md` for current implementation details.
+
 I've reviewed the voice-first mobile coding app UI overview and your project summary. This is a compelling vision—distilling the IDE down to its essence (output + voice) while keeping code as infrastructure rather than interface.
 
 A few observations and questions as you move into implementation:

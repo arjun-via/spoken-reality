@@ -124,7 +124,7 @@ Starting AI processing...
 Sending transcription.final: "Create a product dashboard..."
 ```
 
-**Note:** Currently backend sends mock transcription. Real Grok integration will provide actual speech-to-text.
+**Note:** Backend uses OpenAI Whisper for speech-to-text transcription.
 
 ### 4. Test Agent State Flow
 
@@ -481,8 +481,8 @@ wscat -c ws://localhost:3000/ws?token=test
 - [x] Test agent state flow
 - [x] Test preview URL loading
 
-### Phase 2: Grok Integration (Backend)
-- [ ] Replace mock transcription with real Grok API
+### Phase 2: Voice Integration (Backend)
+- [x] OpenAI Whisper transcription implemented
 - [ ] Implement streaming partial transcriptions
 - [ ] Test with various voice inputs
 
@@ -515,7 +515,7 @@ If you encounter issues:
 5. **Check this guide** for common issues
 
 For specific errors, search console output for error codes:
-- `TRANSCRIPTION_FAILED` - Grok API issue
+- `TRANSCRIPTION_FAILED` - Whisper API issue
 - `CLAUDE_ERROR` - Claude API issue
 - `SANDBOX_ERROR` - E2B issue
 - `INVALID_COMMAND` - User input issue

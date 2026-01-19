@@ -10,8 +10,8 @@ All message types match exactly:
 | Message | Status | Notes |
 |---------|--------|-------|
 | `voice.start` | ✅ Implemented | Initializes voice pipeline |
-| `voice.chunk` | ✅ Implemented | Buffers audio (Grok streaming pending) |
-| `voice.end` | ✅ Implemented | Triggers transcription + AI processing |
+| `voice.chunk` | ✅ Implemented | Buffers audio chunks |
+| `voice.end` | ✅ Implemented | Triggers Whisper transcription + AI processing |
 | `command` | ✅ Implemented | Handles text commands and clarifications |
 | `project.create` | ✅ Implemented | Creates project (DB pending) |
 | `project.open` | ✅ Implemented | Opens project (DB pending) |
@@ -21,8 +21,8 @@ All message types match exactly:
 | Message | Status | Notes |
 |---------|--------|-------|
 | `agent.state` | ✅ Implemented | All 8 states supported |
-| `transcription.partial` | ⏳ Pending | Needs Grok streaming |
-| `transcription.final` | ✅ Implemented | Sent after voice.end |
+| `transcription.partial` | ⏳ Pending | Needs streaming STT |
+| `transcription.final` | ✅ Implemented | Sent after Whisper transcription |
 | `agent.speak` | ✅ Implemented | Text only (TTS pending) |
 | `agent.clarify` | ✅ Implemented | Question + options |
 | `preview.ready` | ✅ Implemented | Sends sandbox URL |
@@ -36,7 +36,7 @@ All error codes from `BACKEND_REQUIREMENTS.md` are implemented:
 
 | Code | Status | When Used |
 |------|--------|-----------|
-| `TRANSCRIPTION_FAILED` | ✅ | Grok Voice API errors |
+| `TRANSCRIPTION_FAILED` | ✅ | OpenAI Whisper API errors |
 | `CLAUDE_ERROR` | ✅ | Claude API errors |
 | `SANDBOX_ERROR` | ✅ | E2B sandbox errors |
 | `INVALID_COMMAND` | ✅ | Unknown message types |
@@ -46,9 +46,9 @@ All error codes from `BACKEND_REQUIREMENTS.md` are implemented:
 ## ⏳ Pending Implementation
 
 ### Audio Processing
-- **Current:** Audio chunks buffered, mock transcription returned
-- **Needed:** Real Grok Voice API streaming
-- **Audio Format Expected:** PCM 16-bit, 16kHz, mono, Base64 encoded
+- **Current:** Audio chunks buffered, transcribed via OpenAI Whisper
+- **Format:** PCM 16-bit, 16kHz, mono, Base64 encoded
+- **Future:** Streaming transcription for real-time feedback
 
 ### Authentication
 - **Current:** Mock user ID assigned on connection
@@ -64,8 +64,8 @@ All error codes from `BACKEND_REQUIREMENTS.md` are implemented:
   - Checkpoints
 
 ### Partial Transcriptions
-- **Current:** Not sent during recording
-- **Needed:** Stream from Grok API as user speaks
+- **Current:** Not sent during recording (batch transcription)
+- **Future:** Stream partial transcriptions as user speaks
 
 ## Connection Details
 
@@ -111,11 +111,11 @@ WebSocket: wss://api.via.app/ws?token={clerk-token}
 
 ## Next Steps for Full Integration
 
-1. **Deploy to Railway** - Get public WebSocket URL
-2. **Update frontend URL** - Change from `wss://api.via.app/ws` to actual URL
-3. **Implement Grok streaming** - Real-time transcription
-4. **Add Clerk validation** - Secure authentication
-5. **Connect database** - Persistent storage
+1. ✅ **Deploy to Railway** - `spoken-reality-production-9cd5.up.railway.app`
+2. ✅ **Update frontend URL** - Connected to Railway backend
+3. ✅ **Implement Whisper STT** - Batch transcription working
+4. **Add Clerk validation** - Secure authentication (pending)
+5. **Connect database** - Persistent storage (pending)
 
 ## Audio Format Reference
 
@@ -131,4 +131,4 @@ Chunk Size: ~16KB per chunk
 Streaming Interval: 100ms (10 chunks per second)
 ```
 
-Backend decodes Base64 → raw PCM → feeds to Grok API.
+Backend decodes Base64 → raw PCM → creates WAV → feeds to OpenAI Whisper API.

@@ -14,6 +14,7 @@ import { Sandbox } from '@e2b/code-interpreter';
 import { env } from '../config/env.js';
 import { logger } from '../utils/logger.js';
 import { SandboxError } from '../utils/errors.js';
+import * as ProjectStore from './ProjectStore.js';
 
 // Store active sandboxes by projectId
 const sandboxes = new Map<string, {
@@ -30,10 +31,14 @@ const SANDBOX_TIMEOUT = 30 * 60 * 1000; // 30 minutes in ms
 
 /**
  * Create or get existing sandbox for project
+ * 
+ * If the sandbox was recreated (due to timeout/death), automatically restores
+ * all files from ProjectStore.
  */
 export async function getOrCreateSandbox(projectId: string): Promise<{
   sandboxId: string;
   url: string;
+  wasRecreated?: boolean;
 }> {
   // Check if sandbox already exists and is not expired
   const existing = sandboxes.get(projectId);
@@ -48,68 +53,97 @@ export async function getOrCreateSandbox(projectId: string): Promise<{
       return {
         sandboxId: existing.sandbox.sandboxId,
         url: existing.url,
+        wasRecreated: false,
       };
     } catch (error) {
       // Sandbox is dead, remove it and create a new one
-      logger.warn('Existing sandbox is dead, creating new one', { projectId });
+      logger.warn('Existing sandbox is dead, will recreate and restore files', { projectId });
       sandboxes.delete(projectId);
     }
   }
   
+  // Check if we have files to restore (indicates this is a recreation)
+  const storedFiles = ProjectStore.getAllFiles(projectId);
+  const needsRestore = storedFiles.length > 0;
+  
   // Try to use a pre-warmed sandbox (much faster!)
+  let usedPrewarmed = false;
   if (consumePrewarmedSandbox(projectId)) {
-    const sandboxInfo = sandboxes.get(projectId)!;
-    return {
-      sandboxId: sandboxInfo.sandbox.sandboxId,
-      url: sandboxInfo.url,
-    };
-  }
-  
-  logger.info('Creating new sandbox (no pre-warmed available)', { projectId });
-  
-  try {
-    // Create new sandbox with 30-minute timeout
-    // TODO: Use custom template with Next.js pre-installed
-    const sandbox = await Sandbox.create({
-      apiKey: env.E2B_API_KEY,
-      timeoutMs: 30 * 60 * 1000, // 30 minutes
-    });
+    usedPrewarmed = true;
+    logger.info('Using pre-warmed sandbox', { projectId, needsRestore, fileCount: storedFiles.length });
+  } else {
+    logger.info('Creating new sandbox (no pre-warmed available)', { projectId, needsRestore, fileCount: storedFiles.length });
+    
+    try {
+      // Create new sandbox with 30-minute timeout
+      const sandbox = await Sandbox.create({
+        apiKey: env.E2B_API_KEY,
+        timeoutMs: 30 * 60 * 1000, // 30 minutes
+      });
 
-    // Be explicit about TTL (guards against SDK defaults / option mismatches)
-    await sandbox.setTimeout(SANDBOX_TIMEOUT);
-    
-    // Get the sandbox URL (for preview)
-    // Note: E2B provides a URL for accessing the sandbox
-    const url = `https://${sandbox.sandboxId}.e2b.dev`;
-    
-    // Store sandbox info
-    sandboxes.set(projectId, {
-      sandbox,
-      projectId,
-      url,
-      createdAt: new Date(),
-      expiresAt: new Date(Date.now() + SANDBOX_TIMEOUT),
+      // Be explicit about TTL (guards against SDK defaults / option mismatches)
+      await sandbox.setTimeout(SANDBOX_TIMEOUT);
+      
+      // Get the sandbox URL (for preview)
+      const url = `https://${sandbox.sandboxId}.e2b.dev`;
+      
+      // Store sandbox info
+      sandboxes.set(projectId, {
+        sandbox,
+        projectId,
+        url,
+        createdAt: new Date(),
+        expiresAt: new Date(Date.now() + SANDBOX_TIMEOUT),
+      });
+      
+      logger.info('Sandbox created', { projectId, sandboxId: sandbox.sandboxId, url });
+    } catch (error) {
+      logger.error('Failed to create sandbox', error);
+      throw new SandboxError('Failed to create code execution environment');
+    }
+  }
+  
+  const sandboxInfo = sandboxes.get(projectId)!;
+  
+  // If we have stored files, restore them to the new sandbox
+  if (needsRestore) {
+    logger.info('Restoring files from ProjectStore to new sandbox', { 
+      projectId, 
+      fileCount: storedFiles.length,
+      sandboxId: sandboxInfo.sandbox.sandboxId 
     });
     
-    logger.info('Sandbox created', { projectId, sandboxId: sandbox.sandboxId, url });
-    
-    return {
-      sandboxId: sandbox.sandboxId,
-      url,
-    };
-  } catch (error) {
-    logger.error('Failed to create sandbox', error);
-    throw new SandboxError('Failed to create code execution environment');
+    try {
+      for (const file of storedFiles) {
+        await sandboxInfo.sandbox.files.write(file.path, file.content);
+      }
+      logger.info('Files restored successfully', { projectId, fileCount: storedFiles.length });
+    } catch (error) {
+      logger.error('Failed to restore files', error);
+      // Don't throw - sandbox is created, files can be rewritten by agent
+    }
   }
+  
+  return {
+    sandboxId: sandboxInfo.sandbox.sandboxId,
+    url: sandboxInfo.url,
+    wasRecreated: needsRestore,
+  };
 }
 
 /**
  * Write files to sandbox
+ * 
+ * IMPORTANT: Files are persisted to ProjectStore so they survive sandbox restarts.
+ * When a sandbox dies and is recreated, all files are automatically restored.
  */
 export async function writeFiles(
   projectId: string,
   files: Array<{ path: string; content: string }>
 ): Promise<string> {
+  // ALWAYS persist files first - this is our source of truth
+  ProjectStore.storeFiles(projectId, files);
+  
   let sandboxInfo = sandboxes.get(projectId);
   if (!sandboxInfo) {
     // Try to create a new sandbox
@@ -132,18 +166,23 @@ export async function writeFiles(
   } catch (error: any) {
     // Check if sandbox timed out
     if (error.message?.includes('sandbox was not found') || error.message?.includes('timeout')) {
-      logger.warn('Sandbox timed out, recreating...', { projectId });
+      logger.warn('Sandbox timed out, recreating and restoring all files...', { projectId });
       // Remove stale sandbox reference
       sandboxes.delete(projectId);
-      // Try to create a new one and retry
+      
+      // Recreate sandbox and restore ALL files from ProjectStore
       try {
         await getOrCreateSandbox(projectId);
         sandboxInfo = sandboxes.get(projectId);
         if (sandboxInfo) {
-          for (const file of files) {
+          // Restore ALL files, not just the new ones
+          const allFiles = ProjectStore.getAllFiles(projectId);
+          logger.info('Restoring files from ProjectStore', { projectId, fileCount: allFiles.length });
+          
+          for (const file of allFiles) {
             await sandboxInfo.sandbox.files.write(file.path, file.content);
           }
-          return 'Files written successfully (sandbox recreated)';
+          return `Files written successfully (sandbox recreated, ${allFiles.length} files restored)`;
         }
       } catch (retryError) {
         logger.error('Failed to recreate sandbox', retryError);

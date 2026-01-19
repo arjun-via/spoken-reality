@@ -15,7 +15,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 1. **🎤 Voice-First Creation**
    - Speak intentions, not prompts
-   - Sub-second latency via Grok Voice API
+   - Voice transcription via OpenAI Whisper
    - Natural conversation, not commands
 
 2. **📱 Mobile-Native Architecture**
@@ -72,7 +72,7 @@ This is especially critical for "production-grade from day one" — users must s
 - Use MPS (Metal Performance Shaders) for PyTorch when available
 
 ### Key Technologies (Expected)
-- **Voice**: Grok Voice API (sub-second latency)
+- **Voice**: OpenAI Whisper (speech-to-text)
 - **Mobile**: Mobile-native architecture with WebView output
 - **Backend**: Production-grade infrastructure
 
